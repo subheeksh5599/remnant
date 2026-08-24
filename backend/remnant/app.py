@@ -16,6 +16,7 @@ Error schema: {"error": {"code", "message", "request_id"}}.
 from __future__ import annotations
 
 import os
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
@@ -59,13 +60,19 @@ app = FastAPI(
 
 
 def _err(request: Request, code: str, message: str, status: int) -> HTTPException:
+    # request_id must NEVER be None in the error schema. If the request-id
+    # middleware hasn't run yet (auth failures fire before it), generate one.
+    request_id = getattr(request.state, "request_id", None)
+    if request_id is None:
+        request_id = uuid.uuid4().hex
+        request.state.request_id = request_id
     return HTTPException(
         status_code=status,
         detail={
             "error": {
                 "code": code,
                 "message": message,
-                "request_id": getattr(request.state, "request_id", None),
+                "request_id": request_id,
             }
         },
     )
