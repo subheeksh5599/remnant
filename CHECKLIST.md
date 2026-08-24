@@ -10,10 +10,11 @@ to decide what deserves creator attention now.
 the audience via forgotten need; Track 3 resonance).
 **Repo:** github.com/subheeksh5599/remnant (private).
 
-**Verification basis:** backend tests (16 passing), fresh-clone gate (clone →
-uv install → pytest → demo, all green), frontend prod build (clean), browser render
-(live), live HTTP flow (numeric verdict + belief replay), anti-slop + secret sweeps
-(clean). Verified 2026-08-24.
+**Verification basis:** backend tests (36 passing), fresh-clone gate (clone →
+`uv sync` → pytest → demo → frontend build, all green), live HTTP v1 flow
+(CLEARED verdict, 409 duplicate, belief replay, provenance API, observatory surfacing
+revisited remnants, restart persistence), anti-slop + secret sweeps (clean).
+Verified 2026-08-24.
 
 ---
 
@@ -118,6 +119,92 @@ uv install → pytest → demo, all green), frontend prod build (clean), browser
 - [x] **J4** One winning-theme line woven through docs — present
 - [x] **J5** Judge Q&A prep written (docs/JUDGE-QA.md) — VERIFIED
 - [ ] **J6** Repo description + topics set — PENDING (one `gh repo edit` when ready)
+
+---
+
+## K. Production-hardening pass (added per technical production checklist) — ALL VERIFIED
+
+### Core architecture
+- [x] Centralized config (`config.py`, validated at startup, fail-fast)
+- [x] Layered: domain (`models`) / inference / experiments / belief / store / minds / API
+- [x] Structured logging + request correlation IDs (JSON lines, X-Request-ID header)
+- [x] Typed interfaces everywhere (Pydantic models on every layer boundary)
+
+### Minds integration
+- [x] Retries with exponential backoff + explicit timeouts (`minds.py`)
+- [x] Malformed responses / empty output treated as failures (never silent)
+- [x] Explicit failure state (`/api/v1/mind` returns error, never fake ok)
+- [x] Credential tests: missing MIND_ID/KEY → explicit error state (tested via client)
+- [x] "Minds owns continuity, backend owns deterministic accounting" documented in README/DEPLOY
+
+### Data model
+- [x] `schema_version` field on Remnant (migration-ready)
+- [x] `updated_at` timestamps everywhere; stable UUID ids everywhere
+- [x] State-transition guard (`transition_to`) with full transition audit trail
+- [x] Outcome immutability (409 on duplicate; status locked after recording)
+
+### Persistence
+- [x] Atomic writes (temp + fsync + rename)
+- [x] Corrupted-store recovery (lastgood snapshot → backups → last in-memory, tested)
+- [x] Concurrent-write safety (RLock, tested with 8 threads)
+- [x] Export / import / backup (tested)
+- [x] Restart persistence (tested + verified live across process kill)
+
+### Inference engine
+- [x] Expression vs need separated; H1–H4 held simultaneously
+- [x] Supporting + conflicting evidence preserved (never suppressed)
+- [x] Adversarial semantic collision tests (token overlap ≠ continuity)
+- [x] Explicit paths: no-reliable-match / insufficient-evidence / new-unrelated (JUDGE-QA + tests)
+
+### Experiment + belief engine
+- [x] Pre-registered metric + threshold, locked before observation
+- [x] Deterministic verdict (CLEARED / DISPROVEN / UNCERTAIN); outcome recorded once
+- [x] Belief reconstructs entirely from persisted chain; deterministic; no manual API manipulation
+- [x] Experiment creation + observation timestamps; status transitions; audit logs
+
+### Autonomous agent behavior
+- [x] Background observatory loop (lifespan-started, interval, cooldown, idempotent)
+- [x] Catches recently-active non-terminal remnants incl. revisited/disproven (re-openable)
+- [x] Action provenance log (`/api/v1/observatory/actions`) + audit events
+- [x] Approval boundaries: recommends only, never executes consequential external actions (tested)
+- [x] Autonomy works without a frontend click (background thread + API endpoint)
+
+### API
+- [x] v1 namespace (`/api/v1/*`), all request bodies validated
+- [x] Consistent error schema `{error: {code, message, request_id}}`
+- [x] 404/409/422/503 paths; request IDs on every response
+- [x] OpenAPI docs at `/api/v1/docs`; optional bearer auth (`REMNANT_REQUIRE_AUTH`)
+- [x] CORS allow-list from config (never * by default)
+
+### Security
+- [x] Secrets env-only, 0 in git history, .env.example only
+- [x] Env validation at startup (config.validate)
+- [x] Minds credentials never exposed to frontend (only /api/v1, no key forwarding)
+- [x] Community text = untrusted data (prompt-injection test proves "ignore previous instructions" is stored as data)
+- [x] External URLs stored as metadata only — never fetched (anti-SSRF)
+- [x] Security headers (nosniff, frame-deny, referrer-policy) on every response
+
+### Testing (total 36)
+- [x] Domain / inference / H1–H4 / thresholds / deterministic verdicts / belief / transitions / provenance / persistence
+- [x] API integration (TestClient), full HTTP flow
+- [x] Restart persistence, concurrent writes, corruption recovery, export/import
+- [x] Invalid input, duplicate outcome (409), invalid values (422), 404 schema
+- [x] Prompt injection, untrusted URL, observatory approval-boundary, observatory idempotency
+- [x] Browser/E2E: verified in live browser render (manually; Playwright not viable on 2-core box per environment constraint)
+
+### Observability
+- [x] Structured JSON logs with request_id; audit events (expression.ingested, experiment.outcome, observatory.action, store.corrupt, …)
+- [x] Health / readiness (/readyz) / liveness (/livez)
+
+### Deployment
+- [x] DEPLOY.md (env table, backend/frontend, no-localhost rule, security notes, restart recovery)
+- [x] Frontend runtime API validation + error/retry states + disabled-during-mutation
+- [x] No localhost in frontend/src (dev proxy only in vite.config.ts)
+
+### Final gate — ALL VERIFIED on fresh clones
+- [x] Fresh clone → `uv sync` → 36 tests → demo (CLEARED) → frontend build
+- [x] Live v1 flow: create → expressions → experiment → outcome 0.067 CLEARED → 409 duplicate → belief replay → provenance API → observatory surfacing → restart → belief survives
+- [x] Anti-slop sweep clean (0 hits); secrets 0 in history
 
 ---
 
