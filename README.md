@@ -68,12 +68,26 @@ Here is the smallest experiment that can."
 
 ## How the Minds agent is used
 
-The persistent Minds agent is the conceptual center of continuity. The backend
-(`backend/remnant/minds.py`) drives the Minds Builder surface (Mind state, cognition
-balance); the long-term interpretation, hypothesis continuity, experiment decisions,
-autonomous follow-up, and cumulative reasoning are the Mind's job. The local store is
-a durable backing so state survives restart — the Mind is the steward of community
-memory, not a database relabeled as "AI."
+Two layers, deliberately split:
+
+1. **The persistent Mind holds the community-memory narrative.** On every
+   belief-critical change (an audience expression ingested, an experiment outcome
+   recorded, an autonomous observatory action), the backend mirrors a compact
+   memory message into the Mind's conversation (`backend/remnant/minds.py` →
+   `POST /v1/messaging/message`, verified live). The Mind's conversation history
+   IS the continuity record: it remembers that the need existed, what evidence
+   arrived, what was tested, what the number said, and what the belief became.
+2. **The backend owns the deterministic accounting** — the H1–H4 evidence
+   accounting, the pre-registered threshold, the crossing verdict, and the belief
+   update are pure arithmetic in Python (no LLM inside the math), so they are
+   reproducible and probe-proof.
+
+The local store is a durable backing so state survives restart; the Mind is the
+persistent steward of the story, not a database relabeled as "AI." The Minds
+surface is live-gated: with `MINDS_BUILDER_API_KEY` + `MIND_ID` set, memory
+mirroring is on (verified); without them, `/api/v1/mind` reports `available=false`
+explicitly and the product still runs on the deterministic core + store. Honest
+split documented in `docs/architecture.md`.
 
 ## How uncertainty is handled
 
@@ -153,11 +167,11 @@ npm run dev   # http://localhost:5173 (proxies /api -> :8000)
 | Adversarial token-collision guard | **Real — tested** |
 | Experiment planner + belief update | **Real — tested** |
 | Persistence across sessions (store) | **Real — tested** |
-| Minds Builder integration (state/cognition) | Real code — requires `MINDS_BUILDER_API_KEY` + `MIND_ID` env to run live |
+| Minds Builder memory mirroring (to the persistent Mind's conversation) | **Real — verified live** (message written + read back; needs env to run) |
 | Demo corpus (2022→2026 arc) | **Synthetic, clearly labeled** — never presented as real |
 | Frontend UI | Real — builds clean, rendered in browser |
 | Real community data ingestion | **Pending** — needs a real export/corpus to ingest |
-| Full live Minds loop (autonomous follow-up tool calls) | **Pending** — auth-gated |
+| Full live Minds loop (autonomous follow-up executed THROUGH the Mind) | **Not claimed** — the observatory runs in the backend; the Mind holds the memory narrative, the backend does the deterministic accounting |
 
 ## Limitations
 

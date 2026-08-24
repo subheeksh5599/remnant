@@ -122,3 +122,60 @@ class MindsClient:
 
     def available(self) -> bool:
         return bool(self.api_key and self.mind_id)
+
+    # --- memory mirroring (the load-bearing Minds integration) --------------------
+    #
+    # The Mind genuinely HOLDS the community-memory narrative: on every
+    # belief-critical change, the backend sends a compact memory message to the
+    # Mind's conversation (alias per remnant). The Mind's conversation history
+    # then IS the continuity record — inspectable via the messaging history
+    # endpoint. The backend remains the deterministic accounting engine; the
+    # Mind is the persistent steward of the story. Verified live against the
+    # Builder API (POST /v1/messaging/conversation + /v1/messaging/message).
+
+    API_BASE = "https://api.build.hellominds.ai"
+
+    def _http(self, method: str, path: str, payload: Optional[dict]) -> dict:
+        import urllib.error
+        import urllib.request
+
+        body = json.dumps(payload).encode() if payload is not None else None
+        req = urllib.request.Request(
+            f"{self.API_BASE}{path}",
+            data=body,
+            method=method,
+            headers={
+                "X-Api-Key": self.api_key or "",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                raw = resp.read().decode()
+        except urllib.error.HTTPError as e:
+            raise MindsError(f"minds http {e.code} on {path}: {e.read().decode()[:200]}") from e
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise MindsError(f"minds http failure on {path}: {e}") from e
+        if not raw.strip():
+            raise MindsError(f"minds http empty response on {path}")
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise MindsError(f"minds http malformed response on {path}") from e
+
+    def remember(self, remnant_id: str, message: str) -> bool:
+        """Mirror a belief-critical state change into the persistent Mind's
+        conversation memory. Returns True on success, False when Minds is not
+        configured or the write fails (explicit, never silent)."""
+        if not self.available():
+            audit("minds.remember_skipped", remnant_id=remnant_id, reason="not configured")
+            return False
+        alias = f"remnant-{remnant_id[:8]}"
+        try:
+            self._http("POST", "/v1/messaging/conversation", {"mindId": self.mind_id, "alias": alias})
+            self._http("POST", "/v1/messaging/message", {"mindId": self.mind_id, "alias": alias, "messageText": message})
+            audit("minds.remembered", remnant_id=remnant_id, alias=alias)
+            return True
+        except MindsError as e:
+            audit("minds.remember_failed", remnant_id=remnant_id, error=str(e))
+            return False

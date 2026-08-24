@@ -18,12 +18,15 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from .config import settings
 from .logging_config import audit, log
 from .models import Remnant, ResolutionState
 from .store import Store
+
+if TYPE_CHECKING:
+    from .minds import MindsClient
 
 
 class AutonomousObservationError(RuntimeError):
@@ -31,8 +34,9 @@ class AutonomousObservationError(RuntimeError):
 
 
 class Observatory:
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, minds: Optional["MindsClient"] = None):
         self.store = store
+        self.minds = minds
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._last_run: Optional[float] = None
@@ -51,6 +55,12 @@ class Observatory:
         }
         self.actions.append(entry)
         audit("observatory.action", **entry)
+        # Mirror the autonomous action into the persistent Mind's memory.
+        if self.minds is not None:
+            self.minds.remember(
+                remnant_id,
+                f"[autonomous] {action}: {reason} (candidate surfaced for re-evaluation; approval required before any external action)",
+            )
         return entry
 
     # --- candidate detection -----------------------------------------------------

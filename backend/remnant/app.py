@@ -43,7 +43,7 @@ observatory: Observatory | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global observatory
-    observatory = Observatory(store)
+    observatory = Observatory(store, minds=minds_client)
     observatory.start()
     yield
     if observatory:
@@ -231,6 +231,8 @@ def add_expression(rid: str, req: IngestExpressionRequest, request: Request) -> 
     r.history.append(f"expression {expr.expression_id} ingested: {req.text[:60]}")
     store.upsert(r)
     audit("expression.ingested", request_id=getattr(request.state, "request_id", None), remnant_id=rid)
+    # Mirror into the persistent Mind's memory (explicit, non-fatal on failure).
+    minds_client.remember(rid, f"[memory] new audience expression: '{req.text[:120]}' ({req.source_kind}, {_parse_dt(req.occurred_at).date().isoformat()})")
     return r.model_dump(mode="json")
 
 
@@ -286,6 +288,12 @@ def record_outcome(rid: str, eid: str, req: ExperimentOutcomeRequest, request: R
         observed_value=req.observed_value,
         verdict=exp.outcome,
         resolution_state=r.resolution_state.value,
+    )
+    # Mirror the belief update into the persistent Mind's memory.
+    minds_client.remember(
+        rid,
+        f"[memory] experiment {eid[:8]} observed {req.observed_value:.3f} -> {exp.outcome}. "
+        f"Resolution state: {r.resolution_state.value}. Beliefs updated from the number, not a vibe.",
     )
     return r.model_dump(mode="json")
 
