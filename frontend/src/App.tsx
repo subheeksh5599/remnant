@@ -48,7 +48,7 @@ function Provenance({ remnant }: { remnant: Remnant }) {
   if (remnant.experiments.length > 0) {
     const last = remnant.experiments[remnant.experiments.length - 1]
     chain.push({ lbl: 'experiment', text: last.test })
-    chain.push({ lbl: 'outcome', text: last.observed ?? 'pending' })
+    chain.push({ lbl: 'outcome', text: last.observed_value !== null && last.observed_value !== undefined ? `${last.observed_value} → ${last.outcome ?? 'pending'}` : 'pending' })
   }
   return (
     <div className="provenance">
@@ -149,9 +149,15 @@ function DetailScreen({ remnant, onBack }: { remnant: Remnant; onBack: () => voi
   const [experiment, setExperiment] = useState<Experiment | null>(
     remnant.experiments[remnant.experiments.length - 1] ?? null,
   )
-  const [outcome, setOutcome] = useState('')
+  const [outcomeValue, setOutcomeValue] = useState('')
+  const [belief, setBelief] = useState<string | null>(null)
 
   const refresh = () => api.remnant(remnant.remnant_id).then(setRefreshed)
+
+  const askBelief = async () => {
+    const b = await api.belief(remnant.remnant_id)
+    setBelief(b.belief)
+  }
 
   const addExpr = async () => {
     if (!ingest.trim()) return
@@ -177,11 +183,12 @@ function DetailScreen({ remnant, onBack }: { remnant: Remnant; onBack: () => voi
   }
 
   const record = async () => {
-    if (!experiment || !outcome.trim()) return
+    const v = Number(outcomeValue)
+    if (!experiment || Number.isNaN(v)) return
     setBusy(true)
     try {
-      await api.recordOutcome(remnant.remnant_id, experiment.experiment_id, outcome.trim())
-      setOutcome('')
+      await api.recordOutcome(remnant.remnant_id, experiment.experiment_id, v)
+      setOutcomeValue('')
       await refresh()
     } finally {
       setBusy(false)
@@ -264,29 +271,54 @@ function DetailScreen({ remnant, onBack }: { remnant: Remnant; onBack: () => voi
       </div>
 
       <div className="section">
-        <h4>Experiment</h4>
+        <h4>Experiment (pre-registered, then observed)</h4>
         {refreshed.experiments.length > 0 ? (
           <>
             {refreshed.experiments.map((e) => (
               <div className="assess" key={e.experiment_id}>
                 <div className="h">EXPERIMENT #{e.experiment_id.slice(0, 6).toUpperCase()} · {e.status}</div>
                 <div className="sum">{e.test}</div>
+                <div className="sum">metric: {e.metric}</div>
+                <div className="sum">
+                  pre-registered threshold: {e.threshold_value} ({e.threshold_operator})
+                </div>
                 <div className="sum">prediction: {e.prediction}</div>
                 <div className="sum">success: {e.success_threshold} · fail: {e.failure_condition}</div>
-                {e.observed && <div className="sum" style={{ color: 'var(--good)' }}>observed: {e.observed}</div>}
+                {e.observed_value !== null && e.observed_value !== undefined && (
+                  <div className="sum" style={{ color: e.crossed_threshold ? 'var(--good)' : 'var(--bad)' }}>
+                    observed value: {e.observed_value.toFixed(3)} → {e.outcome}
+                  </div>
+                )}
               </div>
             ))}
-            <div className="form" style={{ maxWidth: 480 }}>
-              <input className="input" placeholder='Outcome (e.g. "high response from target audience")' value={outcome} onChange={(e) => setOutcome(e.target.value)} />
-              <button className="btn primary" disabled={busy} onClick={record}>record outcome</button>
-            </div>
+            {refreshed.experiments.some((e) => e.status !== 'completed') && (
+              <div className="form" style={{ maxWidth: 480 }}>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.001"
+                  placeholder="observed metric value (e.g. 0.067)"
+                  value={outcomeValue}
+                  onChange={(e) => setOutcomeValue(e.target.value)}
+                />
+                <button className="btn primary" disabled={busy} onClick={record}>
+                  record observed number
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <div className="form" style={{ maxWidth: 480 }}>
-            <div className="empty">No experiment yet. Plan the smallest validation experiment.</div>
-            <button className="btn primary" disabled={busy} onClick={plan}>plan smallest experiment</button>
+            <div className="empty">No experiment yet. Plan the smallest pre-registered probe.</div>
+            <button className="btn primary" disabled={busy} onClick={plan}>plan smallest pre-registered experiment</button>
           </div>
         )}
+      </div>
+
+      <div className="section">
+        <h4>Ask the Mind: what do you currently believe?</h4>
+        <button className="btn" disabled={busy} onClick={askBelief}>ask</button>
+        {belief && <pre className="mindlog" style={{ marginTop: 10, whiteSpace: 'pre-wrap' }}>{belief}</pre>}
       </div>
 
       <div className="section">

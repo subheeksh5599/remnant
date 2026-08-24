@@ -93,13 +93,17 @@ class Experiment(BaseModel):
     experiment_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     remnant_id: str
     hypothesis: Hypothesis
-    test: str  # the smallest intervention
+    test: str  # the smallest intervention (concrete: what exactly is published, where, to whom)
+    metric: str  # exactly what is measured (e.g. comment-to-view ratio at 48h)
+    threshold_value: float = 0.0  # pre-registered numeric threshold
+    threshold_operator: Literal["gte", "lte"] = "gte"  # success = observed crosses this
     prediction: str
-    success_threshold: str
-    failure_condition: str
+    success_threshold: str = ""
+    failure_condition: str = ""
     status: Literal["planned", "running", "completed"] = "planned"
-    observed: Optional[str] = None
-    outcome: Optional[str] = None  # e.g. "high response"
+    observed_value: Optional[float] = None  # the real number, never a vibe word
+    crossed_threshold: Optional[bool] = None  # deterministic verdict vs the pre-registered number
+    outcome: Optional[str] = None  # human summary of the verdict
     decided_at: Optional[datetime] = None
 
 

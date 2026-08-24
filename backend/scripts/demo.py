@@ -83,31 +83,39 @@ def run_demo_scenario(store_path: str = "./data/demo.db") -> None:
     print("\n-- the honest position --")
     print("  'We cannot reliably distinguish H1 (persistent need) from H2 (new cohort) yet.'")
 
-    print("\n-- plan smallest experiment --")
+    print("\n-- plan smallest experiment (pre-registered, numeric) --")
     exp = plan_experiment(r)
     r.experiments.append(exp)
     store.upsert(r)
-    print(f"  {exp.test}")
+    print(f"  test: {exp.test}")
+    print(f"  metric: {exp.metric}")
+    print(f"  PRE-REGISTERED threshold: {exp.threshold_value:.3f} ({exp.threshold_operator})")
     print(f"  success: {exp.success_threshold}")
     print(f"  failure: {exp.failure_condition}")
 
-    print("\n-- record real (demo-observed) outcome --")
-    apply_observed_outcome(r, exp, "high response from the target audience segment")
+    print("\n-- record the observed number (demo value; real path is a real measurement) --")
+    observed = 0.067  # 6.7% comment-to-view ratio at 48h — demo number, clearly labeled
+    apply_observed_outcome(r, exp, observed_value=observed)
     store.upsert(r)
-    print(f"  observed -> '{exp.observed}'")
-    print(f"  resolution state: {r.resolution_state.value}")
+    print(f"  observed value: {exp.observed_value:.3f}")
+    print(f"  verdict (deterministic vs pre-registered {exp.threshold_value:.3f}): {exp.outcome}")
 
     print("\n-- persistence proof (fresh store handle = new session) --")
     fresh = Store(store_path)
     loaded = fresh.get("demo-918")
     assert loaded is not None
-    print("  fresh session still knows:")
+    print("  fresh session still knows the full chain:")
     print(f"    title: {loaded.title}")
     print(f"    expressions: {len(loaded.expressions)} (2022..2026)")
     print(f"    state: {loaded.resolution_state.value}")
-    print(f"    experiments: {len(loaded.experiments)}")
+    print(f"    experiments: {len(loaded.experiments)} (completed: {sum(1 for e in loaded.experiments if e.status == 'completed')})")
     print(f"    history tail: {loaded.history[-2:]}")
-    print("\n  The Mind remembered what the conversation had left behind.")
+
+    print("\n-- 'what do you currently believe about this need?' (fresh session) --")
+    from remnant.belief import current_belief
+    print(current_belief(loaded))
+
+    print("\n  The Mind remembered what the conversation had left behind — with the numbers.")
 
     print("\nSYNTHETIC DEMONSTRATION CORPUS — not real audience data.")
 

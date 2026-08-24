@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from .experiments import apply_observed_outcome, plan_experiment
 from .inference import assess_hypotheses
+from .belief import current_belief
 from .minds import MindsClient
 from .models import (AudienceExpression, CreatorDecision, Remnant, Source)
 from .store import Store
@@ -70,7 +71,7 @@ class CreatorDecisionRequest(BaseModel):
 
 
 class ExperimentOutcomeRequest(BaseModel):
-    observed: str
+    observed_value: float
 
 
 # --- endpoints ---------------------------------------------------------------
@@ -158,9 +159,18 @@ def record_outcome(rid: str, eid: str, req: ExperimentOutcomeRequest) -> dict:
     exp = next((e for e in r.experiments if e.experiment_id == eid), None)
     if exp is None:
         raise HTTPException(status_code=404, detail="experiment not found")
-    apply_observed_outcome(r, exp, req.observed)
+    apply_observed_outcome(r, exp, observed_value=req.observed_value)
     store.upsert(r)
     return r.model_dump(mode="json")
+
+
+@app.get("/api/remnants/{rid}/belief")
+def remnant_belief(rid: str) -> dict:
+    """Answer 'what do you currently believe about this need?' — the full chain."""
+    r = store.get(rid)
+    if r is None:
+        raise HTTPException(status_code=404, detail="remnant not found")
+    return {"remnant_id": rid, "belief": current_belief(r)}
 
 
 @app.get("/api/mind")

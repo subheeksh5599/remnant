@@ -107,18 +107,54 @@ def test_no_recurrence_single_expression():
     assert h1.evidence_strength.value == "low"
 
 
-# --- 9. experiment outcome changes belief --------------------------------------
+# --- 9. experiment outcome changes belief (numeric, pre-registered) -------------
 def test_experiment_outcome_updates_belief():
     r = _remnant([
         ("Can you make a beginner ZK tutorial?", 2022),
         ("How do I start building with zero knowledge?", 2026),
     ])
     exp = plan_experiment(r)
-    apply_observed_outcome(r, exp, "high response from target audience")
+    # Pre-registered threshold must be numeric and set BEFORE observing.
+    assert exp.threshold_value == 0.04
+    assert exp.threshold_operator == "gte"
+    # Observed value CLEARS the threshold -> belief update driven by the number.
+    apply_observed_outcome(r, exp, observed_value=0.067)
     assert r.resolution_state == ResolutionState.REVISITED
     h1 = next(a for a in r.assessments if a.hypothesis.value == "H1")
     assert h1.evidence_strength.value == "high"
-    assert any("experiment" in e for e in h1.supporting_evidence)
+    assert any("0.067" in e for e in h1.supporting_evidence)
+
+
+def test_experiment_failure_updates_belief_down():
+    r = _remnant([
+        ("Can you make a beginner ZK tutorial?", 2022),
+        ("How do I start building with zero knowledge?", 2026),
+    ])
+    exp = plan_experiment(r)
+    apply_observed_outcome(r, exp, observed_value=0.011)  # below the 0.02 failure band
+    assert r.resolution_state == ResolutionState.DISPROVEN
+    h1 = next(a for a in r.assessments if a.hypothesis.value == "H1")
+    assert h1.evidence_strength.value == "low"
+    assert any("0.011" in e for e in h1.contradicting_evidence)
+
+
+def test_experiment_inconclusive_band():
+    r = _remnant([
+        ("Can you make a beginner ZK tutorial?", 2022),
+        ("How do I start building with zero knowledge?", 2026),
+    ])
+    exp = plan_experiment(r)
+    apply_observed_outcome(r, exp, observed_value=0.03)  # ambiguous band 0.02-0.04
+    assert r.resolution_state == ResolutionState.UNCERTAIN
+
+
+def test_outcome_recorded_once_only():
+    r = _remnant([("Can you make a beginner ZK tutorial?", 2022)])
+    exp = plan_experiment(r)
+    apply_observed_outcome(r, exp, observed_value=0.067)
+    # A second observation must be rejected (outcomes are recorded once).
+    with pytest.raises(ValueError):
+        apply_observed_outcome(r, exp, observed_value=0.08)
 
 
 # --- 10. persistence across sessions --------------------------------------------
@@ -149,8 +185,30 @@ def test_provenance_retained_through_lifecycle():
         ("How do I start building with zero knowledge?", 2026),
     ])
     exp = plan_experiment(r)
-    apply_observed_outcome(r, exp, "low response")
+    apply_observed_outcome(r, exp, observed_value=0.011)
     # The original expressions (the provenance) survive the whole lifecycle.
     assert len(r.expressions) == 2
     assert r.expressions[0].source.source_id == "src"
-    assert any("observed: low response" in h for h in r.history)
+    assert any("observed 0.011" in h for h in r.history)
+
+
+# --- 13. belief reconstruction replays the full chain ----------------------------
+def test_belief_reconstruction_replays_chain():
+    from remnant.belief import current_belief
+
+    r = _remnant([
+        ("Can you make a beginner ZK tutorial?", 2022),
+        ("How do I start building with zero knowledge?", 2026),
+    ])
+    exp = plan_experiment(r)
+    apply_observed_outcome(r, exp, observed_value=0.067)
+    belt = current_belief(r)
+    # The answer must contain the whole chain: evidence, hypotheses, threshold,
+    # observed number, verdict, and the honest uncertainty.
+    assert "historical expressions" in belt
+    assert "COMPETING EXPLANATIONS" in belt
+    assert "pre-registered threshold: 0.040" in belt
+    assert "observed value: 0.067" in belt
+    assert "CLEARED" in belt
+    assert "H1" in belt
+    assert "not a fact" in belt or "belief" in belt

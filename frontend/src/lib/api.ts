@@ -34,11 +34,15 @@ export interface Experiment {
   remnant_id: string
   hypothesis: string
   test: string
+  metric: string
+  threshold_value: number
+  threshold_operator: 'gte' | 'lte'
   prediction: string
   success_threshold: string
   failure_condition: string
   status: 'planned' | 'running' | 'completed'
-  observed?: string | null
+  observed_value?: number | null
+  crossed_threshold?: boolean | null
   outcome?: string | null
 }
 
@@ -98,10 +102,12 @@ export const api = {
     }),
   planExperiment: (rid: string) =>
     j<Experiment>(`/api/remnants/${rid}/experiments`, { method: 'POST' }),
-  recordOutcome: (rid: string, eid: string, observed: string) =>
+  recordOutcome: (rid: string, eid: string, observedValue: number) =>
     j<Remnant>(`/api/remnants/${rid}/experiments/${eid}/outcome`, {
       method: 'POST',
-      body: JSON.stringify({ observed }),
+      body: JSON.stringify({ observed_value: observedValue }),
     }),
+  belief: (rid: string) =>
+    j<{ remnant_id: string; belief: string }>(`/api/remnants/${rid}/belief`),
   mind: () => j<{ ok: boolean; name?: string; cognition_balance?: number; available: boolean }>('/api/mind'),
 }
