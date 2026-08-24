@@ -21,3 +21,4 @@ build/
 # os / editor
 .DS_Store
 *.swp
+backend/data/
