@@ -17,9 +17,9 @@ git clone https://github.com/subheeksh5599/remnant.git && cd remnant
 
 # backend + tests
 cd backend
-uv venv .venv && uv pip install -e .
+uv sync
 source .venv/bin/activate
-python -m pytest tests/ -q        # 16 tests, all pass
+python -m pytest tests/ -q        # 36 tests, all pass
 python -m scripts.demo            # the full money-shot arc (labeled synthetic)
 
 # frontend
@@ -128,7 +128,7 @@ frontend/
 ```bash
 # backend
 cd backend
-uv venv .venv && uv pip install -e .
+uv sync
 source .venv/bin/activate
 python -m uvicorn remnant.app:app --port 8000
 
@@ -148,7 +148,7 @@ npm run dev   # http://localhost:5173 (proxies /api -> :8000)
 
 | Area | Status |
 |------|--------|
-| Core domain + inference + experiments + store | **Real — tested** (16 tests passing) |
+| Core domain + inference + experiments + store | **Real — tested** (36 tests passing) |
 | Competing-hypothesis accounting (H1-H4) | **Real — tested** |
 | Adversarial token-collision guard | **Real — tested** |
 | Experiment planner + belief update | **Real — tested** |

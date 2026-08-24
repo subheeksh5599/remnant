@@ -23,7 +23,7 @@ Vite/React frontend). This doc covers running it for real, not just in dev.
 
 ```bash
 cd backend
-uv venv .venv && uv pip install -e .
+uv sync
 source .venv/bin/activate
 python -m uvicorn remnant.app:app --host 0.0.0.0 --port 8000
 ```
