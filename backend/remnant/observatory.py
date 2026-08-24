@@ -60,13 +60,17 @@ class Observatory:
         return sum(1 for e in r.expressions if e.occurred_at.timestamp() >= cutoff)
 
     def _dormant_candidates(self) -> list[Remnant]:
-        """Remnants that are unresolved/dormant AND have a recent signal worth looking at."""
+        """Remnants worth looking at: not terminal (fulfilled/rejected), with a
+        recent signal. Includes revisited remnants — new evidence can re-open an
+        investigated need."""
         candidates = []
         for r in self.store.all():
             if r.resolution_state in (
                 ResolutionState.DORMANT,
                 ResolutionState.UNRESOLVED,
                 ResolutionState.UNCERTAIN,
+                ResolutionState.REVISITED,
+                ResolutionState.DISPROVEN,
             ):
                 recent = self._recent_new_expressions(r)
                 if recent >= 1:
