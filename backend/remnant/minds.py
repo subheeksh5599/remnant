@@ -11,7 +11,7 @@ Hardening:
   - explicit timeouts (never hang a request)
   - malformed responses are treated as failures, never silently ignored
   - Minds failures are EXPLICIT: the backend reports unavailable=true and never
-    fabricates a fake "Mind said X" fallback
+    substitutes fabricated behavior
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ class MindsState:
 
 class MindsError(RuntimeError):
     """Raised when the Minds integration fails. Callers must handle it explicitly
-    and surface the failure — NEVER fall back to fake autonomous behavior."""
+    and surface the failure — never substitute autonomous behavior."""
 
 
 class MindsClient:
@@ -99,7 +99,7 @@ class MindsClient:
 
     def state(self) -> MindsState:
         """Read the Mind's state. On failure returns an EXPLICIT error state —
-        never a fake 'ok' with made-up values."""
+        never an invented 'ok' with fabricated values."""
         if not self.mind_id:
             return MindsState(ok=False, error="MIND_ID not set (env)")
         if not self.api_key:
