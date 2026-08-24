@@ -1,0 +1,98 @@
+{
+  "8421be0023654558a6b18c7cecd0aba6": {
+    "remnant_id": "8421be0023654558a6b18c7cecd0aba6",
+    "title": "Beginner ZK education",
+    "underlying_need_hypothesis": "Beginners want accessible ZK education",
+    "created_at": "2026-08-24T16:35:57.380814Z",
+    "expressions": [
+      {
+        "expression_id": "c3086f57b2bc4396b1d2658b9e489188",
+        "text": "Can you make a beginner ZK tutorial?",
+        "source": {
+          "kind": "youtube_comment",
+          "source_id": "c1",
+          "url": null
+        },
+        "occurred_at": "2022-06-01T00:00:00Z",
+        "audience_segment": null,
+        "creator_response": null
+      },
+      {
+        "expression_id": "aadc0db06dd048b5a297a200bbec1534",
+        "text": "How do I start building with zero knowledge?",
+        "source": {
+          "kind": "youtube_comment",
+          "source_id": "c2",
+          "url": null
+        },
+        "occurred_at": "2026-02-01T00:00:00Z",
+        "audience_segment": null,
+        "creator_response": null
+      }
+    ],
+    "creator_decisions": [],
+    "assessments": [
+      {
+        "hypothesis": "H1",
+        "supporting_evidence": [
+          "expressions across years: hist=1 cur=1",
+          "experiment 7565aa88bff446ab8ff3b1ab48952fdf: high response from target audience"
+        ],
+        "contradicting_evidence": [
+          "creator never responded"
+        ],
+        "evidence_strength": "high",
+        "summary": "Historical and current expressions both exist, but continuity is inferred, not proven."
+      },
+      {
+        "hypothesis": "H2",
+        "supporting_evidence": [
+          "current cohort expressions differ in wording from historical ones"
+        ],
+        "contradicting_evidence": [],
+        "evidence_strength": "medium",
+        "summary": "New users may independently express the same need."
+      },
+      {
+        "hypothesis": "H3",
+        "supporting_evidence": [],
+        "contradicting_evidence": [],
+        "evidence_strength": "low",
+        "summary": "No evidence yet that this is a short-lived external spike."
+      },
+      {
+        "hypothesis": "H4",
+        "supporting_evidence": [
+          "no evidence"
+        ],
+        "contradicting_evidence": [],
+        "evidence_strength": "low",
+        "summary": "Token overlap is not enough to assert a shared underlying need."
+      }
+    ],
+    "experiments": [
+      {
+        "experiment_id": "7565aa88bff446ab8ff3b1ab48952fdf",
+        "remnant_id": "8421be0023654558a6b18c7cecd0aba6",
+        "hypothesis": "H1",
+        "test": "Publish a short explainer / probe addressing: 'Beginners want accessible ZK education' to the relevant audience segment, and measure engagement.",
+        "prediction": "Moderate response expected if the need is currently active.",
+        "success_threshold": "Response above baseline on the target audience segment.",
+        "failure_condition": "Response at or below baseline; evidence does not support acting now.",
+        "status": "completed",
+        "observed": "high response from target audience",
+        "outcome": "high response from target audience",
+        "decided_at": "2026-08-24T16:35:57.891978Z"
+      }
+    ],
+    "resolution_state": "revisited",
+    "current_relevance": "uncertain",
+    "history": [
+      "expression c3086f57b2bc4396b1d2658b9e489188 ingested: Can you make a beginner ZK tutorial?",
+      "expression aadc0db06dd048b5a297a200bbec1534 ingested: How do I start building with zero knowledge?",
+      "experiment planned: 7565aa88bff446ab8ff3b1ab48952fdf",
+      "experiment 7565aa88bff446ab8ff3b1ab48952fdf -> observed: high response from target audience"
+    ],
+    "mind_notes": []
+  }
+}
