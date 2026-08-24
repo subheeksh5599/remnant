@@ -49,6 +49,20 @@ store = Store(os.getenv("STORAGE_PATH", "./data/remnant.db"))
 minds = MindsClient()
 
 
+# Fail fast on config (E3): if the user intends the live Minds integration but
+# hasn't set the env, surface a clear startup warning rather than a silent
+# mid-demo failure. The product still runs (store + demo work); only the live
+# Mind surface is degraded, and that is reported honestly via /api/health.
+if not (os.getenv("MIND_ID") and os.getenv("MINDS_BUILDER_API_KEY")):
+    import logging
+
+    logging.warning(
+        "REMNANT: MIND_ID / MINDS_BUILDER_API_KEY not set — live Minds surface "
+        "disabled. /api/mind reports available=false. Set both env vars for the "
+        "persistent agent integration."
+    )
+
+
 # --- request/response models -------------------------------------------------
 
 class IngestExpressionRequest(BaseModel):
@@ -78,7 +92,15 @@ class ExperimentOutcomeRequest(BaseModel):
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "mind": minds.state().ok, "remnants": len(store.all())}
+    """Proof the backend + store + mind are reachable (E2)."""
+    return {
+        "ok": True,
+        "mind": minds.state().ok,
+        "remnants": len(store.all()),
+        "env": {
+            "mind_configured": bool(os.getenv("MIND_ID") and os.getenv("MINDS_BUILDER_API_KEY")),
+        },
+    }
 
 
 @app.get("/api/remnants")

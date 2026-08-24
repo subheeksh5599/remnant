@@ -7,8 +7,25 @@ time, preserves uncertainty about why they recur or disappear, and autonomously 
 small experiments to discover which needs are actually worth acting on now.
 
 Built for **Creative Minds Jam #1: Hong Kong** (Minds by Animoca Brands).
-Track fit: **Track 1 — Audience growth & engagement** (retain the audience; don't lose
+**Track fit:** **Track 1 — Audience growth & engagement** (retain the audience; don't lose
 them to a forgotten need) with a strong Track 3 (community) resonance.
+
+## ▶ See it in one command
+
+```bash
+git clone https://github.com/subheeksh5599/remnant.git && cd remnant
+
+# backend + tests
+cd backend
+uv venv .venv && uv pip install -e ".[dev]"
+source .venv/bin/activate
+python -m pytest tests/ -q        # 16 tests, all pass
+python -m scripts.demo            # the full money-shot arc (labeled synthetic)
+
+# frontend
+cd ../frontend
+npm install && npm run build      # production build
+```
 
 ---
 
@@ -131,7 +148,7 @@ npm run dev   # http://localhost:5173 (proxies /api -> :8000)
 
 | Area | Status |
 |------|--------|
-| Core domain + inference + experiments + store | **Real — tested** (12 tests passing) |
+| Core domain + inference + experiments + store | **Real — tested** (16 tests passing) |
 | Competing-hypothesis accounting (H1-H4) | **Real — tested** |
 | Adversarial token-collision guard | **Real — tested** |
 | Experiment planner + belief update | **Real — tested** |
