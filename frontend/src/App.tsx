@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Remnant, type Experiment } from './lib/api'
+import { api, isRemnantList, type Remnant, type Experiment } from './lib/api'
 
 // ---------- helpers ----------------------------------------------------------
 
@@ -357,10 +357,19 @@ export default function App() {
   const [view, setView] = useState<View>({ name: 'remnants' })
   const [mind, setMind] = useState<{ ok: boolean; name?: string; cognition_balance?: number; available: boolean } | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     api.remnants().then((rs) => {
+      if (!isRemnantList(rs)) {
+        setLoadError('API returned an invalid response shape')
+        setLoaded(true)
+        return
+      }
       setRemnants(rs)
+      setLoaded(true)
+    }).catch((e: Error) => {
+      setLoadError(e.message)
       setLoaded(true)
     })
     api.mind().then(setMind).catch(() => setMind({ ok: false, available: false }))
@@ -387,7 +396,15 @@ export default function App() {
         </div>
       </div>
       <div className="main">
-        {!loaded ? (
+        {loadError ? (
+          <div>
+            <div className="page-title">Can't reach REMNANT</div>
+            <div className="page-desc">{loadError}</div>
+            <button className="btn" onClick={() => { setLoaded(false); setLoadError(null); api.remnants().then((rs) => { setRemnants(isRemnantList(rs) ? rs : []); setLoaded(true) }).catch((e: Error) => { setLoadError(e.message); setLoaded(true) }) }}>
+              retry
+            </button>
+          </div>
+        ) : !loaded ? (
           <div className="empty">loading…</div>
         ) : view.name === 'remnants' ? (
           <RemnantsScreen remnants={remnants} onOpen={open} />

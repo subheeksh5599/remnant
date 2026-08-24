@@ -98,14 +98,16 @@ def apply_observed_outcome(
     experiment.outcome = exp_note
 
     # Belief update, driven by the number + verdict, with the 2%-4% inconclusive band.
+    from .models import ResolutionState as RS
+
     if experiment.crossed_threshold:
         if remnant.resolution_state in (
-            ResolutionState.UNRESOLVED,
-            ResolutionState.DORMANT,
-            ResolutionState.UNCERTAIN,
-            ResolutionState.UNDER_EXPERIMENT,
+            RS.UNRESOLVED,
+            RS.DORMANT,
+            RS.UNCERTAIN,
+            RS.UNDER_EXPERIMENT,
         ):
-            remnant.resolution_state = ResolutionState.REVISITED
+            remnant.transition_to(RS.REVISITED, f"experiment {experiment.experiment_id} CLEARED threshold")
         for a in remnant.assessments:
             if a.hypothesis.value == "H1":
                 a.evidence_strength = EvidenceStrength.HIGH
@@ -114,13 +116,13 @@ def apply_observed_outcome(
         # Clear failure: the need is not currently active. Any pre-experiment state
         # (unresolved/dormant/uncertain/under-experiment/revisited) gives way.
         if remnant.resolution_state in (
-            ResolutionState.UNRESOLVED,
-            ResolutionState.DORMANT,
-            ResolutionState.UNCERTAIN,
-            ResolutionState.UNDER_EXPERIMENT,
-            ResolutionState.REVISITED,
+            RS.UNRESOLVED,
+            RS.DORMANT,
+            RS.UNCERTAIN,
+            RS.UNDER_EXPERIMENT,
+            RS.REVISITED,
         ):
-            remnant.resolution_state = ResolutionState.DISPROVEN
+            remnant.transition_to(RS.DISPROVEN, f"experiment {experiment.experiment_id} below failure band")
         for a in remnant.assessments:
             if a.hypothesis.value == "H1":
                 a.contradicting_evidence.append(f"experiment {experiment.experiment_id}: {exp_note}")
@@ -128,11 +130,11 @@ def apply_observed_outcome(
     else:
         # Inconclusive band (0.02-0.04): hold beliefs, recommend a follow-up probe.
         if remnant.resolution_state in (
-            ResolutionState.UNRESOLVED,
-            ResolutionState.DORMANT,
-            ResolutionState.UNDER_EXPERIMENT,
+            RS.UNRESOLVED,
+            RS.DORMANT,
+            RS.UNDER_EXPERIMENT,
         ):
-            remnant.resolution_state = ResolutionState.UNCERTAIN
+            remnant.transition_to(RS.UNCERTAIN, f"experiment {experiment.experiment_id} inconclusive band")
         for a in remnant.assessments:
             if a.hypothesis.value == "H1":
                 a.supporting_evidence.append(

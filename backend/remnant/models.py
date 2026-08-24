@@ -114,10 +114,12 @@ class RemnantConfiguration(BaseModel):
 class Remnant(BaseModel):
     """A time-aware hypothesis about an unresolved audience need."""
 
+    schema_version: int = 1  # for future migrations
     remnant_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     title: str
     underlying_need_hypothesis: str
     created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     expressions: list[AudienceExpression] = Field(default_factory=list)
     creator_decisions: list[CreatorDecision] = Field(default_factory=list)
     assessments: list[HypothesisAssessment] = Field(default_factory=list)
@@ -126,6 +128,49 @@ class Remnant(BaseModel):
     current_relevance: Literal["low", "medium", "high", "uncertain"] = "uncertain"
     history: list[str] = Field(default_factory=list)  # mind log
     mind_notes: list[str] = Field(default_factory=list)
+    state_transitions: list[dict] = Field(default_factory=list)  # state-change audit
+
+    # --- state transition guard -------------------------------------------------
+    _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+        "unresolved": {"dormant", "fulfilled", "rejected", "revisited", "uncertain", "under_experiment", "disproven"},
+        "dormant": {"unresolved", "fulfilled", "rejected", "revisited", "uncertain", "under_experiment", "disproven"},
+        "under_experiment": {"revisited", "disproven", "uncertain", "fulfilled", "rejected"},
+        "uncertain": {"revisited", "disproven", "fulfilled", "rejected", "under_experiment"},
+        "revisited": {"fulfilled", "rejected", "disproven", "uncertain"},
+        "fulfilled": set(),
+        "rejected": set(),
+        "disproven": {"revisited", "dormant", "uncertain"},
+        "partially_fulfilled": {"fulfilled", "rejected"},
+        "validated": {"fulfilled"},
+    }
+
+    @classmethod
+    def _tickle(cls) -> None:
+        """Touch the class so the transition map is materialized before use."""
+
+    def touch(self) -> None:
+        self.updated_at = utcnow()
+
+    def transition_to(self, new_state: ResolutionState, reason: str) -> bool:
+        """Guard every state change; record the transition in the audit trail.
+
+        Returns True if the transition was applied, False if it is not allowed.
+        """
+        current = self.resolution_state.value
+        allowed = self._ALLOWED_TRANSITIONS.get(current, set())
+        if new_state.value not in allowed:
+            return False
+        self.state_transitions.append(
+            {
+                "from": current,
+                "to": new_state.value,
+                "reason": reason,
+                "at": utcnow().isoformat(),
+            }
+        )
+        self.resolution_state = new_state
+        self.touch()
+        return True
 
     def first_observed(self) -> Optional[datetime]:
         if not self.expressions:
