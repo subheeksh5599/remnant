@@ -17,7 +17,7 @@ git clone https://github.com/subheeksh5599/remnant.git && cd remnant
 
 # backend + tests
 cd backend
-uv venv .venv && uv pip install -e ".[dev]"
+uv venv .venv && uv pip install -e .
 source .venv/bin/activate
 python -m pytest tests/ -q        # 16 tests, all pass
 python -m scripts.demo            # the full money-shot arc (labeled synthetic)
@@ -128,7 +128,7 @@ frontend/
 ```bash
 # backend
 cd backend
-uv venv .venv && uv pip install -e ".[dev]"
+uv venv .venv && uv pip install -e .
 source .venv/bin/activate
 python -m uvicorn remnant.app:app --port 8000
 
