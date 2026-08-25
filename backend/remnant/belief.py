@@ -13,6 +13,78 @@ from __future__ import annotations
 from .models import Remnant
 
 
+def answer_questions(r: Remnant) -> dict:
+    """The six 'Ask the Mind' questions, answered deterministically from the
+    persisted chain. Every answer cites evidence; none invents certainty."""
+    h1 = next((a for a in r.assessments if a.hypothesis.value == "H1"), None)
+    completed = [e for e in r.experiments if e.status == "completed"]
+    state = r.resolution_state.value
+
+    def _belief_line() -> str:
+        return current_belief(r)
+
+    def _why() -> str:
+        n_hist = sum(1 for e in r.expressions if e.occurred_at.year <= 2023)
+        n_cur = sum(1 for e in r.expressions if e.occurred_at.year >= 2024)
+        parts = [
+            f"{len(r.expressions)} audience expressions recorded "
+            f"({n_hist} historical, {n_cur} current) across {len({e.source.kind for e in r.expressions})} source types",
+        ]
+        if completed:
+            last = completed[-1]
+            parts.append(
+                f"last experiment observed {last.observed_value} vs pre-registered "
+                f"{last.threshold_value} ({last.threshold_operator}) -> {last.outcome}"
+            )
+        if h1 is not None:
+            parts.append(
+                f"H1 (persistent unresolved need) currently holds {h1.evidence_strength.value} evidence "
+                f"({len(h1.supporting_evidence)} supporting, {len(h1.contradicting_evidence)} conflicting items)"
+            )
+        return "; ".join(parts)
+
+    def _evidence() -> str:
+        lines = []
+        for e in r.expressions[-4:]:
+            lines.append(f"  - {e.occurred_at.date().isoformat()} [{e.source.kind}] \"{e.text[:90]}\"")
+        return "\n".join(lines) if lines else "  - none recorded yet"
+
+    def _contradicts() -> str:
+        conflicts = []
+        if h1 is not None:
+            conflicts += h1.contradicting_evidence
+        creator_rejected = [d for d in r.creator_decisions if d.decision == "rejected"]
+        if creator_rejected:
+            conflicts.append(f"creator explicitly rejected this need: {creator_rejected[-1].reason or 'no reason given'}")
+        return "\n".join(f"  - {c}" for c in conflicts) if conflicts else "  - none on record — uncertainty is preserved, not hidden"
+
+    def _next_test() -> str:
+        if r.resolution_state.value in ("fulfilled", "rejected", "disproven"):
+            return "No test recommended: the need is resolved/closed on the record."
+        if completed and completed[-1].crossed_threshold is not None:
+            last = completed[-1]
+            return (
+                f"Recommended: a follow-up probe on the same metric "
+                f"({last.metric}, threshold {last.threshold_value} {last.threshold_operator}) "
+                f"to confirm the observed signal is stable, or a variant targeting a different segment."
+            )
+        return "Recommended: plan the smallest pre-registered probe (concrete metric + threshold) and record the observed number."
+
+    def _changed() -> str:
+        recent = r.history[-3:]
+        return "\n".join(f"  - {h}" for h in recent) if recent else "  - nothing yet"
+
+    return {
+        "what_do_you_currently_believe": _belief_line(),
+        "why": _why(),
+        "what_evidence_supports_this": _evidence(),
+        "what_contradicts_it": _contradicts(),
+        "what_should_we_test_next": _next_test(),
+        "what_changed_since_the_last_experiment": _changed(),
+        "resolution_state": state,
+    }
+
+
 def current_belief(remnant: Remnant) -> str:
     """Reconstruct the Mind's current belief with its full evidence chain."""
     if not remnant.expressions:

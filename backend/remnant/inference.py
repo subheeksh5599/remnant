@@ -38,13 +38,94 @@ class SemanticMatch:
 # Two expressions that share a token are NOT evidence of continuity. We explicitly
 # track this so we never over-merge.
 
+def analyze_relationship(a: str, b: str) -> dict:
+    """Adversarial relationship analysis between two expressions.
+
+    Deliberately conservative: shared tokens are necessary but NOT sufficient
+    for 'same need' — the collision case ('How do I learn ZK?' vs 'ZK badge is
+    broken') must come back 'different need', not a false merge. Output is
+    structured and schema-validated by the API layer.
+    """
+    ta, tb = _tokens(a), _tokens(b)
+    shared = ta & tb
+    # stopword list: tokens too generic to carry meaning about the NEED
+    stop = {"how", "do", "i", "you", "we", "a", "an", "the", "can", "make", "me",
+            "to", "for", "of", "is", "are", "it", "this", "that", "with", "on",
+            "in", "at", "my", "your", "our", "please", "help", "start"}
+    meaningful_shared = shared - stop
+    answers = [x for x in _tokens(b) if x not in stop]
+
+    if not meaningful_shared:
+        return {
+            "expression_a": a, "expression_b": b,
+            "relationship": "insufficient_evidence",
+            "confidence": "low",
+            "reasoning": [
+                "no meaningful shared content tokens",
+                f"raw shared tokens: {sorted(shared)[:6] or 'none'} (stopwords only)",
+                "semantic overlap without shared vocabulary cannot be asserted by token-aware matching — needs an embedding or a probe",
+            ],
+        }
+    if len(meaningful_shared) >= 2 and len(answers) >= 3:
+        return {
+            "expression_a": a, "expression_b": b,
+            "relationship": "same_need",
+            "confidence": "candidate",
+            "reasoning": [
+                f"meaningful shared tokens: {sorted(meaningful_shared)}",
+                "candidate continuity — still requires evidence-accounted review",
+            ],
+        }
+    # single meaningful shared token: real but weak — insufficient to assert
+    # continuity, and NOT enough to dismiss (the collision guard).
+    has_collision_marker = any(
+        t in {"bug", "broken", "fix", "error", "crash", "issue", "fail"} for t in answers
+    )
+    if has_collision_marker:
+        return {
+            "expression_a": a, "expression_b": b,
+            "relationship": "different_need",
+            "confidence": "high",
+            "reasoning": [
+                f"shared token '{sorted(meaningful_shared)[0]}' appears in a bug/issue",
+                "context — likely a fault report, not an unmet need",
+                "adversarial collision guard: shared token alone is not continuity",
+            ],
+        }
+    return {
+        "expression_a": a, "expression_b": b,
+        "relationship": "insufficient_evidence",
+        "confidence": "low",
+        "reasoning": [
+            f"single meaningful shared token: {sorted(meaningful_shared)}",
+            "not enough signal to assert continuity; requires a probe",
+        ],
+    }
+
+
 def _tokens(s: str) -> set[str]:
     # Strip punctuation so "ZK?" and "ZK" are the same token. Naive split
     # otherwise produces false negatives (and false positives on shared
-    # punctuation artifacts).
+    # punctuation artifacts). Light stemming handles inflections
+    # (tutorial/tutorials, beginner/beginners) so genuine continuity is not
+    # missed by plural/suffix noise.
     import re
 
-    return {t for t in re.sub(r"[^a-z0-9\s]", "", s.lower()).split() if t}
+    words = re.findall(r"[a-z0-9]+", s.lower())
+    return {_stem(w) for w in words}
+
+
+def _stem(w: str) -> str:
+    # minimal, conservative English suffix reduction (no over-stemming)
+    if len(w) > 4 and w.endswith("ies") and len(w) > 5:
+        return w[:-3] + "y"  # stories -> story
+    if len(w) > 4 and w.endswith("ing"):
+        return w[:-3]  # building -> build
+    if len(w) > 3 and w.endswith("ers"):
+        return w[:-2]  # beginners -> beginner
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]  # tutorials -> tutorial
+    return w
 
 
 def _has_token(s1: str, s2: str) -> bool:

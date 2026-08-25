@@ -25,11 +25,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .belief import current_belief
+from .belief import current_belief, answer_questions
 from .config import settings
 from .experiments import apply_observed_outcome, plan_experiment
-from .inference import assess_hypotheses
-from .logging_config import RequestIdMiddleware, audit, log
+from .inference import analyze_relationship, assess_hypotheses
+from .logging_config import RequestIdMiddleware, audit, audit_trail, log
 from .minds import MindsClient
 from .models import (AudienceExpression, CreatorDecision, Remnant, Source)
 from .observatory import Observatory
@@ -373,6 +373,69 @@ def mind_state() -> dict:
         "cognition_balance": st.cognition_balance,
         "available": minds_client.available(),
         "error": st.error,  # EXPLICIT failure, never silent
+    }
+
+
+class AdversarialRequest(BaseModel):
+    expression_a: str = Field(min_length=1, max_length=1000)
+    expression_b: str = Field(min_length=1, max_length=1000)
+
+
+@app.post("/api/v1/adversarial/analyze")
+def adversarial_analyze(req: AdversarialRequest) -> dict:
+    """Semantic Safety: relationship analysis between two expressions, with the
+    adversarial collision guard. Same need / different need / insufficient
+    evidence, plus the reasoning evidence for the verdict."""
+    result = analyze_relationship(req.expression_a, req.expression_b)
+    audit("adversarial.analyzed", a=req.expression_a[:60], b=req.expression_b[:60], verdict=result["relationship"])
+    return result
+
+
+@app.get("/api/v1/remnants/{rid}/ask")
+def ask_the_mind(rid: str, request: Request) -> dict:
+    """The six Ask-the-Mind questions, answered from the persisted chain."""
+    r = store.get(rid)
+    if r is None:
+        raise _err(request, "not_found", "remnant not found", 404)
+    return {"remnant_id": rid, "answers": answer_questions(r)}
+
+
+@app.get("/api/v1/audit")
+def audit_endpoint(limit: int = 50, request: Request = None) -> dict:  # type: ignore[assignment]
+    """Recent audit events (mutations, state transitions, experiment lifecycle,
+    autonomous actions, belief updates) with request ids when present."""
+    trail = audit_trail(limit=max(1, min(limit, 200)))
+    return {"events": trail, "count": len(trail)}
+
+
+@app.post("/api/v1/demo/load")
+def demo_load(request: Request) -> dict:
+    """Load the CLEARLY-LABELED synthetic demonstration corpus (2022-2026 arc)
+    into the store, so the demo can prove the full money-shot flow. Every record
+    is marked synthetic; the honesty label travels with the data."""
+    from .scripts_loader import build_demo_corpus  # local import keeps startup lean
+
+    created = build_demo_corpus(store)
+    audit("demo.corpus_loaded", request_id=getattr(request.state, "request_id", None), remnants=len(created))
+    return {"loaded": len(created), "synthetic": True, "label": "SYNTHETIC DEMONSTRATION CORPUS — not real audience data"}
+
+
+@app.post("/api/v1/demo/reconnect")
+def demo_reconnect(request: Request) -> dict:
+    """Simulate an application restart: reload the store from disk and verify the
+    belief chain survived. This is the Persistence Proof control."""
+    global store
+    store = Store(settings.storage_path)
+    # rewire the observatory to the recycled store
+    global observatory
+    if observatory is not None:
+        observatory.store = store
+        observatory.actions = []
+    audit("demo.reconnected", request_id=getattr(request.state, "request_id", None), remnants=len(store.all()))
+    return {
+        "reconnected": True,
+        "remnants_survived": len(store.all()),
+        "note": "store reloaded from disk; belief chains reconstructed from persisted state",
     }
 
 

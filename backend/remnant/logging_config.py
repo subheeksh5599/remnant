@@ -51,8 +51,24 @@ log = setup_logging()
 
 
 def audit(event: str, **fields) -> None:
-    """Write an audit-trail log line (experiments, belief updates, actions)."""
+    """Write an audit-trail log line (experiments, belief updates, actions)
+    AND keep a bounded in-memory ring for the Audit Trail API."""
     log.info("audit", extra={"event": event, **fields})
+    try:
+        _AUDIT_RING.append({"event": event, **fields})
+        while len(_AUDIT_RING) > _AUDIT_RING_MAX:
+            _AUDIT_RING.pop(0)
+    except Exception:  # noqa: BLE001 — audit must never break the app
+        pass
+
+
+_AUDIT_RING: list[dict] = []
+_AUDIT_RING_MAX = 200
+
+
+def audit_trail(limit: int = 50) -> list[dict]:
+    """Most recent audit events (newest last) for the Audit Trail API."""
+    return list(_AUDIT_RING[-limit:])
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
