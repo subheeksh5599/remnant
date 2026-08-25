@@ -158,6 +158,21 @@ npm install
 npm run dev   # http://localhost:5173 (proxies /api -> :8000)
 ```
 
+## Deployment
+
+**Live:** https://remnant-two.vercel.app (Creative Minds Jam #1 submission build)
+
+Single Vercel project: Vite static frontend + Python (FastAPI) serverless function at
+`/api/*`. Serverless FS is read-only, so the deployed API runs in **memory mode**
+(`STORAGE_PATH=:memory:`): the labeled synthetic demo corpus seeds at cold start, and
+`/api/v1/health` honestly reports `storage_mode: memory`. The durable deployment
+(VPS, systemd, JSON store + backups + corruption recovery) is the production-grade
+path documented in `docs/DEPLOY.md`.
+
+- Frontend: `scripts/vercel-build.sh` stages `deploy/dist` (static) + root `api/` (function).
+- API: `api/index.py` entrypoint; rewrites route `/api/*` → function, everything else → SPA.
+- Deploy: `npx vercel deploy --prod --yes` (alias `remnant-two`).
+
 ## Honesty table
 
 | Area | Status |
