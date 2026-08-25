@@ -34,13 +34,21 @@ class AutonomousObservationError(RuntimeError):
 
 
 class Observatory:
-    def __init__(self, store: Store, minds: Optional["MindsClient"] = None):
+    def __init__(self, store: Store, minds: Optional["MindsClient"] = None, minds_factory=None):
         self.store = store
         self.minds = minds
+        # minds_factory: callable returning the ACTIVE minds client at call time
+        # (so a user-connected Mind is used for autonomous memory too)
+        self._minds_factory = minds_factory
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._last_run: Optional[float] = None
         self.actions: list[dict] = []  # action provenance log (in-memory + audit)
+
+    def _minds(self):
+        if self._minds_factory is not None:
+            return self._minds_factory()
+        return self.minds
 
     # --- provenance ------------------------------------------------------------
 
@@ -56,8 +64,9 @@ class Observatory:
         self.actions.append(entry)
         audit("observatory.action", **entry)
         # Mirror the autonomous action into the persistent Mind's memory.
-        if self.minds is not None:
-            self.minds.remember(
+        minds = self._minds()
+        if minds is not None:
+            minds.remember(
                 remnant_id,
                 f"[autonomous] {action}: {reason} (candidate surfaced for re-evaluation; approval required before any external action)",
             )

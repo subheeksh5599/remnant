@@ -98,21 +98,26 @@ class MindsClient:
         raise MindsError(f"minds call failed after {retries + 1} attempts: {last_err}")
 
     def state(self) -> MindsState:
-        """Read the Mind's state. On failure returns an EXPLICIT error state —
-        never an invented 'ok' with fabricated values."""
+        """Read the Mind's state via the HTTP Builder API (works on serverless,
+        unlike the CLI). On failure returns an EXPLICIT error state — never an
+        invented 'ok' with fabricated values."""
         if not self.mind_id:
             return MindsState(ok=False, error="MIND_ID not set (env)")
         if not self.api_key:
             return MindsState(ok=False, error="MINDS_BUILDER_API_KEY not set (env)")
         try:
-            d = self._run(["mind", "show", "--mind", self.mind_id])
-            mind = d.get("mind", {})
-            bal = self._run(["cognition", "balance", "--mind", self.mind_id])
-            balance = bal.get("balance", {}).get("cognition", 0.0)
+            d = self._http("GET", f"/v1/minds/{self.mind_id}", None)
+            enabled = bool(d.get("isEnabled", False))
+            name = d.get("name")
+            try:
+                bal = self._http("GET", f"/v1/minds/{self.mind_id}/credits", None)
+                balance = bal.get("cognition", 0.0)
+            except MindsError:
+                balance = 0.0
             return MindsState(
                 mind_id=self.mind_id,
-                name=mind.get("name"),
-                enabled=bool(mind.get("isEnabled", False)),
+                name=name,
+                enabled=enabled,
                 cognition_balance=float(balance or 0.0),
                 ok=True,
             )
@@ -174,8 +179,39 @@ class MindsClient:
         try:
             self._http("POST", "/v1/messaging/conversation", {"mindId": self.mind_id, "alias": alias})
             self._http("POST", "/v1/messaging/message", {"mindId": self.mind_id, "alias": alias, "messageText": message})
-            audit("minds.remembered", remnant_id=remnant_id, alias=alias)
+            audit("minds.remembered", remnant_id=remnant_id, alias=alias, mind_id=self.mind_id[:8])
             return True
         except MindsError as e:
             audit("minds.remember_failed", remnant_id=remnant_id, error=str(e))
             return False
+
+    def list_minds(self) -> list[dict]:
+        """List the Minds available to the connected builder key (per-user
+        connection flow). Raises MindsError on failure — never fake data.
+        The endpoint returns a bare JSON array of mind objects."""
+        if not self.api_key:
+            raise MindsError("builder api key missing")
+        data = self._http("GET", f"/v1/humans/{self._human_id()}/minds", None)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return data.get("minds", []) or data.get("mind", []) or []
+        return []
+
+    def _human_id(self) -> str:
+        """Extract humanId from the Builder API key JWT payload (verified key
+        shape: {..., humanId: '0b07503e-...', ...}). Never sent anywhere."""
+        import base64
+
+        if not self.api_key:
+            raise MindsError("builder api key missing")
+        try:
+            payload = self.api_key.split(".")[1]
+            payload += "=" * (-len(payload) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(payload))
+            hid = claims.get("humanId")
+            if not hid:
+                raise MindsError("builder key payload missing humanId")
+            return hid
+        except Exception as e:  # noqa: BLE001
+            raise MindsError(f"cannot decode builder key: {e}") from e

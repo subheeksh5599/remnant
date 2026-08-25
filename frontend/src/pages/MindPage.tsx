@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   api, fmtDate, shortId,
-  type MindState, type ObservatoryAction, type ObservationCandidate, type AskAnswers,
+  type MindState, type MindsStatus, type ObservatoryAction, type ObservationCandidate, type AskAnswers,
 } from '../lib/api'
 
 export function MindPage() {
   const [mind, setMind] = useState<MindState | null>(null)
+  const [status, setStatus] = useState<MindsStatus | null>(null)
   const [actions, setActions] = useState<ObservatoryAction[]>([])
   const [surfaced, setSurfaced] = useState<ObservationCandidate[]>([])
   const [answers, setAnswers] = useState<AskAnswers | null>(null)
@@ -15,12 +16,15 @@ export function MindPage() {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [remnants, setRemnants] = useState<{ remnant_id: string; title: string }[]>([])
+  const [keyField, setKeyField] = useState('')
+  const [connectMsg, setConnectMsg] = useState<string | null>(null)
 
   const refresh = () => {
-    Promise.all([api.mind(), api.observatoryActions(), api.remnants()])
-      .then(([m, a, rs]) => {
+    Promise.all([api.mind(), api.observatoryActions(), api.remnants(), api.mindsStatus()])
+      .then(([m, a, rs, st]) => {
         setMind(m); setActions(a.actions)
         setRemnants(rs.map((r) => ({ remnant_id: r.remnant_id, title: r.title })))
+        setStatus(st)
       })
       .catch((e: Error) => setErr(e.message))
   }
@@ -41,6 +45,23 @@ export function MindPage() {
       setSurfaced(o.surfaced); setActions(o.action_log)
       if (o.surfaced.length && !askRid) setAskRid(o.surfaced[0].remnant_id)
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  const connect = async () => {
+    if (!keyField.trim()) return
+    setBusy(true); setConnectMsg(null)
+    try {
+      const r = await api.mindsConnect(keyField.trim())
+      setConnectMsg(`Connected to ${r.mind_name}. ${r.note}`)
+      setKeyField('')
+      refresh()
+    } catch (e) { setConnectMsg((e as Error).message) } finally { setBusy(false) }
+  }
+
+  const disconnect = async () => {
+    setBusy(true); setConnectMsg(null)
+    try { await api.mindsDisconnect(); setConnectMsg('Disconnected. The env-configured Mind (if any) is used again.'); refresh() }
+    catch (e) { setConnectMsg((e as Error).message) } finally { setBusy(false) }
   }
 
   const reconnect = async () => {
@@ -72,6 +93,38 @@ export function MindPage() {
         the Mind's conversation; without it, this page reports why not.
       </p>
 
+      {/* Connect your own Mind */}
+      <div className="card-title"><h3>Connect your Mind</h3></div>
+      <div className="card" style={{ marginBottom: 20 }}>
+        <p className="small muted" style={{ marginBottom: 12 }}>
+          Any creator can use this instance with <b>their own Minds agent</b>: paste a Minds Builder
+          API key, and your Mind becomes the memory steward — every expression, experiment, and belief
+          update is mirrored into <b>your</b> Mind's conversation. Validated against the real Builder
+          API; the key is never stored or echoed back.
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input className="input" style={{ flex: 1, minWidth: 260 }} type="password"
+            placeholder="Minds Builder API key (eyJ…) / MIND_ID optional"
+            value={keyField} onChange={(ev) => setKeyField(ev.target.value)} />
+          <button className="btn" disabled={busy || !keyField.trim()} onClick={connect}>Connect</button>
+          {status?.connected && (
+            <button className="btn btn-ghost" disabled={busy} onClick={disconnect}>Disconnect</button>
+          )}
+        </div>
+        {connectMsg && <div className="ev ev-neutral" style={{ marginTop: 12 }}>{connectMsg}</div>}
+        {status && (
+          <div className="kv" style={{ marginTop: 12 }}>
+            <dt>Memory steward</dt>
+            <dd>
+              {status.connected
+                ? <span><span className={`badge ${status.kind === 'user' ? 'badge-info' : 'badge-ok'}`}>{status.kind === 'user' ? 'your Mind' : 'env-configured'}</span> {status.mind_name ?? ''}</span>
+                : <span className="badge badge-neutral">none connected</span>}
+            </dd>
+            <dt>Status detail</dt><dd className="small muted">{status.error ?? 'ok'}</dd>
+          </div>
+        )}
+      </div>
+
       {err && <div className="empty" style={{ marginBottom: 16, padding: 14 }}>{err}</div>}
 
       {/* Mind status */}
@@ -89,7 +142,7 @@ export function MindPage() {
           <div className="card-title"><h3>Persistence status</h3></div>
           <div className="kv">
             <dt>Store</dt><dd>durable JSON backing</dd>
-            <dt>Memory mirroring</dt><dd>{mind?.available ? 'on (env configured)' : 'off — Minds env not set'}</dd>
+            <dt>Memory mirroring</dt><dd>{status?.connected ? `on → ${status.mind_name ?? mind?.name ?? 'connected Mind'}` : mind?.available ? 'on (env configured)' : 'off — connect your Mind above'}</dd>
             <dt>Last autonomous</dt><dd>{actions.length ? `${actions[actions.length - 1].action} · ${fmtDate(actions[actions.length - 1].at)}` : 'none'}</dd>
           </div>
         </div>

@@ -86,7 +86,17 @@ export interface MindState {
   enabled?: boolean
   cognition_balance?: number
   available: boolean
+  connected?: boolean
   error?: string
+}
+
+export interface MindsStatus {
+  connected: boolean
+  kind: 'user' | 'env' | 'none'
+  ok: boolean
+  mind_id?: string | null
+  mind_name?: string | null
+  error?: string | null
 }
 
 export interface ObservationCandidate {
@@ -233,6 +243,14 @@ export const api = {
     }),
   observatoryActions: () => j<{ actions: ObservatoryAction[] }>('/api/v1/observatory/actions'),
   mind: () => j<MindState>('/api/v1/mind'),
+  mindsConnect: (builderApiKey: string, mindId?: string) =>
+    j<{ connected: boolean; mind_id: string; mind_name?: string; note: string }>('/api/v1/minds/connect', {
+      method: 'POST',
+      body: JSON.stringify({ builder_api_key: builderApiKey, mind_id: mindId }),
+    }),
+  mindsDisconnect: () =>
+    j<{ connected: boolean }>('/api/v1/minds/disconnect', { method: 'POST' }),
+  mindsStatus: () => j<MindsStatus>('/api/v1/minds/status'),
   audit: (limit = 100) => j<{ events: AuditEvent[]; count: number }>(`/api/v1/audit?limit=${limit}`),
   demoLoad: () =>
     j<{ loaded: number; synthetic: boolean; label: string }>('/api/v1/demo/load', { method: 'POST' }),

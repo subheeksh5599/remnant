@@ -30,7 +30,7 @@ from .config import settings
 from .experiments import apply_observed_outcome, plan_experiment
 from .inference import analyze_relationship, assess_hypotheses
 from .logging_config import RequestIdMiddleware, audit, audit_trail, log
-from .minds import MindsClient
+from .minds import MindsClient, MindsError
 from .models import (AudienceExpression, CreatorDecision, Remnant, Source)
 from .observatory import Observatory
 from .store import Store
@@ -39,11 +39,23 @@ store = Store(os.getenv("STORAGE_PATH", ":memory:" if os.getenv("RENDER_SERVERLE
 minds_client = MindsClient()
 observatory: Observatory | None = None
 
+# Per-user Minds connection (any browser visitor can connect their own Mind).
+# The connected client is used for memory mirroring; env-configured client is
+# the fallback when no user has connected. The key lives in memory only — never
+# written to the store, never returned to the frontend after connect.
+_user_client: Optional[MindsClient] = None
+
+
+def active_minds() -> MindsClient:
+    """The client used for memory mirroring: connected user's Mind first,
+    else the env-configured default. Never fabricates either."""
+    return _user_client if _user_client is not None else minds_client
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global observatory
-    observatory = Observatory(store, minds=minds_client)
+    observatory = Observatory(store, minds=minds_client, minds_factory=active_minds)
     observatory.start()
     # Serverless (memory mode): seed the labeled synthetic corpus so the site
     # always shows the demo, honestly labeled. Durable mode keeps its disk state.
@@ -242,7 +254,7 @@ def add_expression(rid: str, req: IngestExpressionRequest, request: Request) -> 
     store.upsert(r)
     audit("expression.ingested", request_id=getattr(request.state, "request_id", None), remnant_id=rid)
     # Mirror into the persistent Mind's memory (explicit, non-fatal on failure).
-    minds_client.remember(rid, f"[memory] new audience expression: '{req.text[:120]}' ({req.source_kind}, {_parse_dt(req.occurred_at).date().isoformat()})")
+    active_minds().remember(rid, f"[memory] new audience expression: '{req.text[:120]}' ({req.source_kind}, {_parse_dt(req.occurred_at).date().isoformat()})")
     return r.model_dump(mode="json")
 
 
@@ -300,7 +312,7 @@ def record_outcome(rid: str, eid: str, req: ExperimentOutcomeRequest, request: R
         resolution_state=r.resolution_state.value,
     )
     # Mirror the belief update into the persistent Mind's memory.
-    minds_client.remember(
+    active_minds().remember(
         rid,
         f"[memory] experiment {eid[:8]} observed {req.observed_value:.3f} -> {exp.outcome}. "
         f"Resolution state: {r.resolution_state.value}. Beliefs updated from the number, not a vibe.",
@@ -374,16 +386,77 @@ def observatory_actions(request: Request) -> dict:
 
 @app.get("/api/v1/mind")
 def mind_state() -> dict:
-    st = minds_client.state()
+    st = active_minds().state()
+    user_connected = _user_client is not None
     return {
         "ok": st.ok,
         "mind_id": st.mind_id,
         "name": st.name,
         "enabled": st.enabled,
         "cognition_balance": st.cognition_balance,
-        "available": minds_client.available(),
+        "available": active_minds().available(),
+        "connected": user_connected,  # True = a visitor connected their own Mind
         "error": st.error,  # EXPLICIT failure, never silent
     }
+
+
+class ConnectMindRequest(BaseModel):
+    builder_api_key: str = Field(min_length=20, max_length=2000)
+    mind_id: Optional[str] = None  # if omitted, the first enabled Mind is used
+
+
+@app.post("/api/v1/minds/connect")
+def minds_connect(req: ConnectMindRequest, request: Request) -> dict:
+    """Connect a visitor's own Minds agent (their Builder key + Mind). Validates
+    against the REAL Builder API (lists their Minds); never accepts a fake key.
+    The key stays in memory for this instance — not stored, not returned."""
+    global _user_client
+    candidate = MindsClient(mind_id=req.mind_id, api_key=req.builder_api_key)
+    try:
+        minds = candidate.list_minds()
+    except MindsError as e:
+        raise _err(request, "minds_connect_failed", f"Builder API rejected the key: {e}", 401)
+    if not minds:
+        raise _err(request, "no_minds", "this Builder key has no Minds", 422)
+    chosen = None
+    if req.mind_id:
+        chosen = next((m for m in minds if str(m.get("mindId")) == req.mind_id), None)
+        if chosen is None:
+            raise _err(request, "mind_not_found", "specified Mind not found on this key", 404)
+    else:
+        chosen = next((m for m in minds if m.get("isEnabled")), minds[0])
+    _user_client = MindsClient(mind_id=str(chosen.get("mindId")), api_key=req.builder_api_key)
+    audit("minds.connected", request_id=getattr(request.state, "request_id", None), mind_id=str(chosen.get("mindId"))[:8])
+    return {
+        "connected": True,
+        "mind_id": str(chosen.get("mindId")),
+        "mind_name": chosen.get("name"),
+        "note": "Your Mind is now the memory steward for this instance (per-serverless-instance lifetime).",
+    }
+
+
+@app.post("/api/v1/minds/disconnect")
+def minds_disconnect(request: Request) -> dict:
+    global _user_client
+    _user_client = None
+    audit("minds.disconnected", request_id=getattr(request.state, "request_id", None))
+    return {"connected": False}
+
+
+@app.get("/api/v1/minds/status")
+def minds_status() -> dict:
+    """What is the memory steward right now? Connected user's Mind, the
+    env-configured default, or none — reported honestly."""
+    if _user_client is not None:
+        st = _user_client.state()
+        return {"connected": True, "kind": "user", "ok": st.ok, "mind_id": st.mind_id,
+                "mind_name": st.name, "error": st.error}
+    if minds_client.available():
+        st = minds_client.state()
+        return {"connected": True, "kind": "env", "ok": st.ok, "mind_id": st.mind_id,
+                "mind_name": st.name, "error": st.error}
+    return {"connected": False, "kind": "none", "ok": False, "mind_id": None,
+            "mind_name": None, "error": "no Minds configured — set env or connect your own"}
 
 
 class AdversarialRequest(BaseModel):

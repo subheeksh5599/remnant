@@ -103,6 +103,24 @@ def test_bearer_auth_off_by_default():
     assert res.status_code == 200
 
 
+def test_minds_connect_rejects_fake_key():
+    """A fake Builder key must be rejected by the REAL API validation (401),
+    never accepted silently."""
+    res = client.post("/api/v1/minds/connect",
+                      json={"builder_api_key": "fake.key.that.is.not.real.at.all.000000000000000000"})
+    assert res.status_code == 401
+
+
+def test_minds_connect_requires_key():
+    res = client.post("/api/v1/minds/connect", json={"builder_api_key": "x"})
+    assert res.status_code == 422
+
+
+def test_minds_status_reports_none():
+    s = client.get("/api/v1/minds/status").json()
+    assert s["connected"] is False or s["kind"] in ("user", "env")
+
+
 def test_bearer_auth_on_gates_all_routes():
     """With auth on: no token -> 401 with request_id, wrong token -> 401,
     correct token -> 200. Simulated by setting the env vars (config is read at
