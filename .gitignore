@@ -22,3 +22,7 @@ build/
 .DS_Store
 *.swp
 backend/data/
+deploy/
+.vercel/
+.vercel
+api/

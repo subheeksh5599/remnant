@@ -35,7 +35,7 @@ from .models import (AudienceExpression, CreatorDecision, Remnant, Source)
 from .observatory import Observatory
 from .store import Store
 
-store = Store(settings.storage_path)
+store = Store(os.getenv("STORAGE_PATH", ":memory:" if os.getenv("RENDER_SERVERLESS") or os.getenv("VERCEL") else "./data/remnant.db"))
 minds_client = MindsClient()
 observatory: Observatory | None = None
 
@@ -45,6 +45,15 @@ async def lifespan(app: FastAPI):
     global observatory
     observatory = Observatory(store, minds=minds_client)
     observatory.start()
+    # Serverless (memory mode): seed the labeled synthetic corpus so the site
+    # always shows the demo, honestly labeled. Durable mode keeps its disk state.
+    if store.memory_mode and len(store.all()) == 0:
+        try:
+            from .scripts_loader import build_demo_corpus
+            build_demo_corpus(store)
+            audit("demo.seeded_at_startup", remnants=len(store.all()))
+        except Exception:  # noqa: BLE001 — never block startup
+            log.exception("demo seed failed")
     yield
     if observatory:
         observatory.stop()
@@ -173,6 +182,7 @@ def health() -> dict:
         "remnants": len(store.all()),
         "env": {
             "mind_configured": settings.minds_configured,
+            "storage_mode": "memory" if store.memory_mode else "durable",
         },
     }
 
@@ -423,10 +433,10 @@ def demo_load(request: Request) -> dict:
 @app.post("/api/v1/demo/reconnect")
 def demo_reconnect(request: Request) -> dict:
     """Simulate an application restart: reload the store from disk and verify the
-    belief chain survived. This is the Persistence Proof control."""
+    belief chain survived. On serverless (memory mode) this is honest: there is
+    no disk, so the check reports the in-memory truth instead of faking it."""
     global store
-    store = Store(settings.storage_path)
-    # rewire the observatory to the recycled store
+    store = Store(settings.storage_path if not store.memory_mode else ":memory:")
     global observatory
     if observatory is not None:
         observatory.store = store
@@ -435,7 +445,12 @@ def demo_reconnect(request: Request) -> dict:
     return {
         "reconnected": True,
         "remnants_survived": len(store.all()),
-        "note": "store reloaded from disk; belief chains reconstructed from persisted state",
+        "storage_mode": "memory" if store.memory_mode else "durable",
+        "note": (
+            "store reloaded from disk; belief chains reconstructed from persisted state"
+            if not store.memory_mode
+            else "serverless memory mode: no disk — state lives for the lifetime of the instance (honest: persistence proof requires the durable deployment)"
+        ),
     }
 
 

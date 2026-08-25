@@ -13,10 +13,17 @@ export function RemnantsPage() {
   const [filter, setFilter] = useState<string>('all')
 
   useEffect(() => {
-    api.remnants().then((rs) => {
+    const grab = () => api.remnants().then((rs) => {
       if (!isRemnantList(rs)) throw new Error('invalid response shape')
       setRemnants(rs); setLoaded(true)
-    }).catch((e: Error) => { setErr(e.message); setLoaded(true) })
+    }).catch(() => {
+      // serverless cold-start: retry once before showing the error
+      setTimeout(() => api.remnants().then((rs) => {
+        if (!isRemnantList(rs)) throw new Error('invalid response shape')
+        setRemnants(rs); setLoaded(true)
+      }).catch((e2: Error) => { setErr(e2.message); setLoaded(true) }), 1200)
+    })
+    grab()
   }, [])
 
   const states = ['all', ...Array.from(new Set(remnants.map((r) => r.resolution_state)))]

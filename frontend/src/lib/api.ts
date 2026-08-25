@@ -187,7 +187,7 @@ export function isRemnantList(x: unknown): x is Remnant[] {
 }
 
 export const api = {
-  health: () => j<{ ok: boolean; mind: boolean; remnants: number; env: { mind_configured: boolean } }>('/api/v1/health'),
+  health: () => j<{ ok: boolean; mind: boolean; remnants: number; env: { mind_configured: boolean; storage_mode?: string } }>('/api/v1/health'),
   readyz: () => j<{ ok: boolean; remnants: number }>('/api/v1/readyz'),
   livez: () => j<{ ok: boolean }>('/api/v1/livez'),
   remnants: () => j<Remnant[]>('/api/v1/remnants'),

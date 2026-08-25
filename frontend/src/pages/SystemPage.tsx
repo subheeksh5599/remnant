@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type AuditEvent } from '../lib/api'
 
 export function SystemPage() {
-  const [health, setHealth] = useState<{ ok: boolean; mind: boolean; remnants: number; env: { mind_configured: boolean } } | null>(null)
+  const [health, setHealth] = useState<{ ok: boolean; mind: boolean; remnants: number; env: { mind_configured: boolean; storage_mode?: string } } | null>(null)
   const [ready, setReady] = useState<{ ok: boolean; remnants: number } | null>(null)
   const [live, setLive] = useState<{ ok: boolean } | null>(null)
   const [audit, setAudit] = useState<AuditEvent[]>([])
@@ -36,7 +36,7 @@ export function SystemPage() {
         <div className="card">
           <div className="kv">
             <dt>Liveness</dt><dd><span className={`badge ${live?.ok ? 'badge-ok' : 'badge-err'}`}>{live?.ok ? 'alive' : 'down'}</span></dd>
-            <dt>Persistence</dt><dd><span className="badge badge-ok">store healthy</span></dd>
+            <dt>Persistence</dt><dd><span className={`badge ${health?.env?.storage_mode === 'memory' ? 'badge-warn' : 'badge-ok'}`}>{health?.env?.storage_mode === 'memory' ? 'memory (serverless)' : 'store healthy'}</span></dd>
           </div>
         </div>
         <div className="card">

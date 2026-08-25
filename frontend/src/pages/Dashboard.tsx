@@ -12,23 +12,37 @@ function Badge({ kind, children }: { kind: string; children: React.ReactNode }) 
 export function Dashboard() {
   const [remnants, setRemnants] = useState<Remnant[]>([])
   const [mind, setMind] = useState<MindState | null>(null)
-  const [health, setHealth] = useState<{ ok: boolean; mind: boolean; remnants: number } | null>(null)
+  const [health, setHealth] = useState<{ ok: boolean; mind: boolean; remnants: number; env?: { mind_configured: boolean; storage_mode?: string } } | null>(null)
   const [actions, setActions] = useState<ObservatoryAction[]>([])
   const [surfacedCount, setSurfacedCount] = useState(0)
   const [err, setErr] = useState<string | null>(null)
 
   const load = () => {
-    Promise.all([api.remnants(), api.mind(), api.health(), api.observatoryActions(), api.observatoryRun()])
-      .then(([rs, m, h, a, o]) => {
+    // observatory run is best-effort (503 when the loop isn't running) — never blank the dashboard
+    const obs = api.observatoryRun().then((o) => o.surfaced.length).catch(() => 0)
+    Promise.all([api.remnants(), api.mind(), api.health(), api.observatoryActions(), obs])
+      .then(([rs, m, h, a, count]) => {
         if (!isRemnantList(rs)) throw new Error('invalid response shape')
-        setRemnants(rs); setMind(m); setHealth(h); setActions(a.actions); setSurfacedCount(o.surfaced.length)
+        setRemnants(rs); setMind(m); setHealth(h); setActions(a.actions); setSurfacedCount(count)
       })
-      .catch((e: Error) => setErr(e.message))
+      .catch(() => {
+        // serverless cold-start: retry once after a beat before showing an error
+        setTimeout(() => {
+          const obs2 = api.observatoryRun().then((o) => o.surfaced.length).catch(() => 0)
+          Promise.all([api.remnants(), api.mind(), api.health(), api.observatoryActions(), obs2])
+            .then(([rs, m, h, a, count]) => {
+              if (!isRemnantList(rs)) throw new Error('invalid response shape')
+              setRemnants(rs); setMind(m); setHealth(h); setActions(a.actions); setSurfacedCount(count)
+            })
+            .catch((e2: Error) => setErr(e2.message))
+        }, 1200)
+      })
   }
   useEffect(load, [])
 
   const lastAutonomous = actions.length ? actions[actions.length - 1] : null
   const persistOk = health?.ok ?? false
+  const storageMode = health?.env?.storage_mode ?? null
   const mindLive = mind?.ok ?? false
 
   return (
@@ -50,7 +64,7 @@ export function Dashboard() {
           <div className="kv">
             <dt>Mind</dt><dd>{mind?.name ?? (mind?.available ? '—' : 'not configured')}</dd>
             <dt>Connection</dt><dd>{mindLive ? 'Connected' : 'Unavailable'}</dd>
-            <dt>Persistence</dt><dd>{persistOk ? 'Store healthy' : 'Store error'}</dd>
+            <dt>Persistence</dt><dd><span className={`badge ${storageMode === 'memory' ? 'badge-warn' : persistOk ? 'badge-ok' : 'badge-err'}`}>{storageMode === 'memory' ? 'memory (serverless)' : persistOk ? 'Store healthy' : 'Store error'}</span></dd>
           </div>
         </div>
         <div className="card">

@@ -31,7 +31,9 @@ class Store:
     def __init__(self, path: str = "./data/remnant.db"):
         self.path = path
         self._lock = threading.RLock()  # reentrant: upsert -> _persist_atomic
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        self._memory_mode = path == ":memory:"
+        if not self._memory_mode:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         self._last_good: Optional[dict] = None  # last successfully serialized state
         self._remnants: dict[str, Remnant] = {}
         self._load()
@@ -39,6 +41,9 @@ class Store:
     # --- load / recovery -------------------------------------------------------
 
     def _load(self) -> None:
+        if self._memory_mode:
+            self._remnants = {}
+            return
         if not os.path.exists(self.path):
             self._remnants = {}
             return
@@ -96,6 +101,11 @@ class Store:
     # --- atomic persistence ------------------------------------------------------
 
     def _persist_atomic(self) -> None:
+        # Memory mode (serverless: read-only FS): no file writes; state lives
+        # for the lifetime of the instance, honestly reported as such.
+        if self._memory_mode:
+            self._last_good = {rid: r.model_dump(mode="json") for rid, r in self._remnants.items()}
+            return
         # Serialize first (so we know it's valid), then write to a temp file,
         # fsync, then rename over the real path. A crash at any point leaves
         # either the old file or the new one — never a truncated/partial file.
@@ -152,16 +162,19 @@ class Store:
         """Export all state to a portable JSON file. Returns record count."""
         with self._lock:
             data = {rid: r.model_dump(mode="json") for rid, r in self._remnants.items()}
-        tmp = out_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, out_path)
+        if not self._memory_mode:
+            tmp = out_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, out_path)
         return len(data)
 
     def import_records(self, in_path: str, replace: bool = False) -> int:
         """Import records from a JSON export. replace=True clears existing first."""
-        if not os.path.exists(in_path):
+        if not os.path.exists(in_path) and not self._memory_mode:
             raise FileNotFoundError(in_path)
+        if self._memory_mode:
+            raise ValueError("memory mode: import from file requires a writable store")
         with open(in_path, "r", encoding="utf-8") as f:
             raw = json.load(f)
         if not isinstance(raw, dict):
@@ -179,7 +192,13 @@ class Store:
 
     def backup(self) -> str:
         """Snapshot current state to a timestamped backup file."""
+        if self._memory_mode:
+            return ":memory:"
         ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         out = f"{self.path}.{ts}.snapshot"
         self.export(out)
         return out
+
+    @property
+    def memory_mode(self) -> bool:
+        return self._memory_mode
