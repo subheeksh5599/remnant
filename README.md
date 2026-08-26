@@ -1,218 +1,188 @@
-# REMNANT
+<p align="center">
+  <a href="https://remnant-two.vercel.app"><img src="docs/remnant-banner.png" width="750" alt="REMNANT"></a>
+</p>
 
-**“The Mind that remembers what communities leave behind.”**
+<p align="center">
+    <em>The Mind that remembers what communities leave behind.</em>
+</p>
 
-REMNANT is a persistent Minds agent that remembers unresolved audience needs across
-time, preserves uncertainty about why they recur or disappear, and autonomously runs
-small experiments to discover which needs are actually worth acting on now.
+<p align="center">
+<a href="https://remnant-two.vercel.app" target="_blank">
+    <img src="https://img.shields.io/badge/live-demo-7A5C3E" alt="Live demo">
+</a>
+<a href="https://github.com/subheeksh5599/remnant/actions" target="_blank">
+    <img src="https://img.shields.io/badge/tests-61%20passing-3E7A5C" alt="Tests">
+</a>
+<a href="https://www.animocabrands.com/minds" target="_blank">
+    <img src="https://img.shields.io/badge/Track-1%20Audience%20growth%20and%20engagement-5C6B7A" alt="Track">
+</a>
+<a href="https://opensource.org/licenses/MIT" target="_blank">
+    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
+</a>
+</p>
 
-Built for **Creative Minds Jam #1: Hong Kong** (Minds by Animoca Brands).
-**Track fit:** **Track 1 — Audience growth & engagement** (retain the audience; don't lose
-them to a forgotten need) with a strong Track 3 (community) resonance.
+---
 
-## ▶ See it in one command
+**Website**: <a href="https://remnant-two.vercel.app" target="_blank">remnant-two.vercel.app</a>
+
+**Documentation**: <a href="https://github.com/subheeksh5599/remnant/blob/main/docs/architecture.md" target="_blank">docs/architecture.md</a>
+
+**Repository**: <a href="https://github.com/subheeksh5599/remnant" target="_blank">github.com/subheeksh5599/remnant</a>
+
+---
+
+REMNANT is a persistent Minds agent that discovers *candidate recurring needs* in a creator's community, holds competing explanations about why they recur, tests them with pre-registered experiments, and learns from the measured outcome. Built for **Creative Minds Jam #1: Hong Kong** — **Track 1: Audience growth & engagement**.
+
+**[Features](#features) - **[Requirements](#requirements) - **[Installation](#installation) - **[Usage](#usage) - **[API](#api) - **[Architecture](#architecture) - **[Honesty](#honesty)**
+
+## Features
+
+- **Cross-language need discovery** — a transparent concept glossary + token overlap links "beginner ZK tutorial" (2022) to "start building with zero knowledge" (2026) as a *candidate*, never a merge. Deterministic and auditable; no LLM inside the math.
+- **Competing hypotheses (H1–H4)** — persistent need · new cohort · temporary trend · semantic coincidence. Evidence strength is qualitative (low/medium/high); contradicting evidence is surfaced, never suppressed.
+- **Pre-registered experiments** — metric, threshold, population and window are locked *before* observing. The verdict is pure arithmetic: `observed 0.067 >= threshold 0.040 → CLEARED`. Creator-defined overrides are supported and recorded.
+- **Persistent Minds memory — with recovery** — every belief-critical change is mirrored into the persistent Mind's conversation, and `/api/v1/minds/recover/{rid}` reads it back, so a later session can recover what the agent knew even if the local store is empty.
+- **Autonomous observatory** — on durable deployments a background thread revisits dormant/revisited remnants on an interval (cooldown + action provenance + approval boundaries), with zero page loads required.
+- **Provenance-first evidence** — every expression carries source kind, id, URL, author, occurred-at and ingested-at. Real and synthetic are never mixed without labels.
+- **Full provenance UI** — remnant detail, discovery evidence, H1–H4 panel, belief reconstruction, audit trail with request IDs, semantic-safety lab.
+
+## Requirements
+
+**Backend**: Python 3.12+, `uv` (or pip). No external model/API keys required for the deterministic core.
+
+**Frontend**: Node 18+, npm.
+
+**Minds (optional, recommended)**: a `MINDS_BUILDER_API_KEY` and `MIND_ID` from the [Minds Builder](https://www.animocabrands.com/minds). Without them the product runs fully on the deterministic core + store; `/api/v1/mind` reports `available=false` honestly.
+
+> It is recommended to use a virtual environment. The test suite (61 tests) runs against a clean install.
+
+## Installation
 
 ```bash
 git clone https://github.com/subheeksh5599/remnant.git && cd remnant
 
-# backend + tests
+# backend
 cd backend
-uv sync
+uv venv .venv
+uv pip install -e .
 source .venv/bin/activate
-python -m pytest tests/ -q        # 36 tests, all pass
-python -m scripts.demo            # the full money-shot arc (labeled synthetic)
+python -m pytest tests/ -q        # 61 tests, all pass
+python -m uvicorn remnant.app:app --port 8000
 
-# frontend
-cd ../frontend
-npm install && npm run build      # production build
+# frontend (new terminal)
+cd frontend
+npm install
+npm run dev                      # http://localhost:5173 (proxies /api -> :8000)
 ```
 
----
+And just like that, you're ready to go. Load the synthetic demo corpus (clearly labeled) through **Demo Controls** on the Safety Lab page — the system discovers the groupings itself.
 
-## The problem
+## Usage
 
-Creators receive enormous amounts of audience input — requests, questions, feature
-ideas, complaints, recurring problems. Most of it disappears into historical
-conversation. People leave. Platforms change. Vocabulary changes. A creator may
-remember that "people used to ask for something" but loses the context, persistence,
-history, and unresolved state.
+```python
+from fastapi.testclient import TestClient
+from remnant.app import app
 
-## The core idea
+with TestClient(app) as c:
+    # 1. ingest raw community evidence (REMNANT discovers the need)
+    r = c.post("/api/v1/remnants", json={
+        "title": "Beginner ZK education",
+        "underlying_need_hypothesis": "Beginners want an accessible on-ramp to zero-knowledge education.",
+    }).json()
+    rid = r["remnant_id"]
 
-A **REMNANT** is a persistent, time-aware hypothesis about an unresolved audience
-need — *not a note, not a saved comment*. It preserves:
+    c.post(f"/api/v1/remnants/{rid}/expressions", json={
+        "text": "Can you make a beginner ZK tutorial?",
+        "source_kind": "youtube_comment", "source_id": "yt-2022-01",
+        "occurred_at": "2022-06-01T00:00:00Z",
+    })
 
-- the underlying need candidate (expression ≠ need; the exact words vs what people want)
-- historical expressions with full provenance (source, timestamp)
-- the creator's responses (or silence)
-- **competing explanations** — H1 persistent need · H2 new cohort · H3 temporary trend · H4 semantic coincidence
-- evidence for and against each hypothesis
-- experiments and their real observed outcomes
-- belief updates and the Mind's history
+    # 2. plan a pre-registered experiment (or override it)
+    exp = c.post(f"/api/v1/remnants/{rid}/experiments").json()
 
-REMNANT never claims: *"This is definitely the same demand returning."* It says:
-"Current evidence supports revisiting this need — we cannot yet distinguish H1 from H2.
-Here is the smallest experiment that can."
+    # 3. record the observation — the verdict is deterministic
+    out = c.post(f"/api/v1/remnants/{rid}/experiments/{exp['experiment_id']}/outcome",
+                 json={"observed_value": 0.067}).json()
+    # out: observed 0.067 >= pre-registered 0.040 -> CLEARED, state -> revisited
 
-**The product is a decision-under-uncertainty engine, not a certainty engine.**
-
-## Why persistence matters (the demo proof)
-
-1. Audience expresses a need (2022).
-2. REMNANT records it; the creator never responds → dormant/unresolved.
-3. Years later, new audience members express the same underlying need in different
-   words (2026).
-4. The Mind detects *possible* continuity, holds H1 vs H2 honestly.
-5. It plans the smallest experiment; the outcome updates belief.
-6. A fresh session still knows the full history → **continuity demonstrated, not claimed.**
-
-## How the Minds agent is used
-
-Two layers, deliberately split:
-
-1. **The persistent Mind holds the community-memory narrative — and can give it back.** On every
-   belief-critical change (an audience expression ingested, an experiment outcome
-   recorded, an autonomous observatory action), the backend mirrors a compact
-   memory message into the Mind's conversation (`backend/remnant/minds.py` →
-   `POST /v1/messaging/message`, verified live). The Mind's conversation history
-   IS the continuity record: it remembers that the need existed, what evidence
-   arrived, what was tested, what the number said, and what the belief became.
-   It is not write-only: `/api/v1/minds/recover/{rid}` reads the conversation
-   back and reconstructs what the agent knew about a need, even if the local
-   store is empty (verified live). Recovery is honest about its boundary: the
-   Mind returns the *narrative*; the *structured accounting* (thresholds,
-   verdicts, H1–H4 state) lives in the backend store.
-2. **The backend owns the deterministic accounting** — the H1–H4 evidence
-   accounting, the pre-registered threshold, the crossing verdict, and the belief
-   update are pure arithmetic in Python (no LLM inside the math), so they are
-   reproducible and probe-proof. **The discovery engine** (`inference.py`) links
-   expressions to needs via a transparent concept glossary + token overlap —
-   deterministic, auditable, and capable of *candidate* cross-language discovery
-   ("beginner ZK tutorial" ↔ "start building with zero knowledge") without an
-   LLM and without auto-merging.
-
-The local store is a durable backing so state survives restart; the Mind is the
-persistent steward of the story, not a database relabeled as "AI." The Minds
-surface is live-gated: with `MINDS_BUILDER_API_KEY` + `MIND_ID` set, memory
-mirroring is on (verified); without them, `/api/v1/mind` reports `available=false`
-explicitly and the product still runs on the deterministic core + store. Honest
-split documented in `docs/architecture.md`.
-
-## How uncertainty is handled
-
-- Four competing hypotheses are maintained for every potentially recurring need.
-- Evidence strength is **qualitative** (low/medium/high), never a fake calibrated "91%".
-- Contradicting evidence is surfaced, never suppressed (anti-confirmation-bias).
-- The Mind can conclude **DON'T ACT** — that is a strong, credible result.
-- Adversarial guard: shared tokens are **not** treated as continuity
-  (`How do I learn ZK?` vs `ZK badge is broken` must never auto-merge).
-
-## How experiments work
-
-Prediction ≠ observation. Before a major intervention the Mind proposes the smallest
-experiment that maximises information gain while minimising creator effort and
-audience risk, with success/failure thresholds set **before** the result. Only real
-observed outcomes update beliefs.
-
-## How provenance works
-
-Every important conclusion is traceable:
-
-```
-source → observation → interpretation → hypothesis → recommendation
-       → experiment → outcome → belief update
+    # 4. ask the Mind what it believes
+    belief = c.get(f"/api/v1/remnants/{rid}/belief").json()["belief"]
 ```
 
-Every expression carries source kind, id, and timestamp. Nothing is fabricated;
-synthetic demo data is labeled `SYNTHETIC DEMONSTRATION CORPUS`.
+The adversarial semantic test (`POST /api/v1/adversarial/analyze`) shows the system refusing to merge a fault report with a need, and accepting a candidate cross-language link — both with supporting, conflicting and uncertainty evidence lines.
 
-## Data sources
+## API
 
-- Preferred: real creator-provided comments, real public data, real community exports.
-- Demo: `backend/scripts/demo.py` builds a **clearly labeled synthetic** 2022→2026 arc
-  to demonstrate the temporal workflow. It is never presented as real audience data.
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/v1/remnants` | list remnants |
+| POST | `/api/v1/remnants` | register a need hypothesis |
+| GET | `/api/v1/remnants/{rid}` | full remnant: expressions, discoveries, H1–H4, experiments, decisions |
+| POST | `/api/v1/remnants/{rid}/expressions` | ingest evidence (provenance: source, author, url, timestamps) |
+| POST | `/api/v1/remnants/{rid}/decisions` | creator decision (adopted / rejected / deferred) |
+| POST | `/api/v1/remnants/{rid}/experiments` | plan experiment (autonomous or creator-defined: metric, threshold, population, window) |
+| POST | `/api/v1/remnants/{rid}/experiments/{eid}/outcome` | record observation → deterministic verdict (409 on duplicate) |
+| GET | `/api/v1/remnants/{rid}/belief` | ask the Mind: reconstructed belief + uncertainty |
+| GET | `/api/v1/remnants/{rid}/provenance` | traceable evidence chain |
+| GET | `/api/v1/mind` | Minds status (explicit error when unconfigured) |
+| GET | `/api/v1/minds/status` | memory steward: user-connected, env-configured, or none |
+| GET | `/api/v1/minds/recover/{rid}` | recover narrative from the persistent Mind's conversation |
+| POST | `/api/v1/minds/connect` | connect a visitor's own Minds agent (validated against the Builder API) |
+| GET | `/api/v1/observatory/actions` | autonomous observatory action log (with audit IDs) |
+| POST | `/api/v1/adversarial/analyze` | cross-language semantic safety test |
+| GET | `/api/v1/audit` | audit trail: mutations, transitions, experiments, outcomes, request IDs |
+| GET | `/api/v1/health` | health + storage mode (memory vs durable, reported honestly) |
+| POST | `/api/v1/demo/load` | load labeled synthetic corpus through the discovery engine (idempotent) |
 
 ## Architecture
 
 ```
 backend/remnant/
-  models.py        core domain: Remnant, Expression, Hypothesis H1-H4, Experiment
-  inference.py     expression-vs-need distinction, adversarial token guard, H1-H4 accounting
-  experiments.py   smallest-experiment planner + belief update from real outcomes
-  store.py         durable JSON backing (survives restart)
-  minds.py         Minds Builder integration (persistent agent state)
-  app.py           FastAPI: /api/remnants, expressions, decisions, experiments, /api/mind
+  models.py        domain: Remnant, Expression, Experiment, H1–H4, discovery lifecycle
+  inference.py     discovery engine: concept glossary + token overlap + collision guard
+  experiments.py   pre-registered experiment planner + deterministic belief update
+  observatory.py   autonomous background loop (durable deploys; cooldown + provenance)
+  belief.py        belief reconstruction from the persisted chain
+  store.py         atomic durable JSON (survives restart)
+  minds.py         Minds Builder: memory mirroring + recovery
+  app.py           FastAPI surface
 frontend/
-  src/App.tsx      archive-style UI: remnants, register, detail, provenance, experiments, mind
+  src/pages/       Landing · Dashboard · Remnants · RemnantDetail · Mind · System · Lab
+  src/components/  Shell · Footer · Reveal
+  src/lib/api.ts   typed API client (mirrors the domain model)
+scripts/
+  vercel-build.sh          stages the Vercel deploy (static + python function)
+  import_youtube.py        real public YouTube evidence → discovery pipeline
+deploy/
+  durable-observatory.sh   one-shot durable VPS deploy (isolated, idempotent)
 ```
 
-## Run it
-
-```bash
-# backend
-cd backend
-uv sync
-source .venv/bin/activate
-python -m uvicorn remnant.app:app --port 8000
-
-# demo scenario (synthetic, clearly labeled)
-python -m scripts.demo
-
-# tests
-python -m pytest tests/ -q
-
-# frontend
-cd frontend
-npm install
-npm run dev   # http://localhost:5173 (proxies /api -> :8000)
-```
+Details in [`docs/architecture.md`](https://github.com/subheeksh5599/remnant/blob/main/docs/architecture.md) — including the honest ownership split (Mind = narrative + recovery; backend = deterministic accounting).
 
 ## Deployment
 
-**Live:** https://remnant-two.vercel.app (Creative Minds Jam #1 submission build)
+**Live demo:** <a href="https://remnant-two.vercel.app" target="_blank">remnant-two.vercel.app</a>
 
-Single Vercel project: Vite static frontend + Python (FastAPI) serverless function at
-`/api/*`. Serverless FS is read-only, so the deployed API runs in **memory mode**
-(`STORAGE_PATH=:memory:`): the labeled synthetic demo corpus seeds at cold start, and
-`/api/v1/health` honestly reports `storage_mode: memory`. The durable deployment
-(VPS, systemd, JSON store + backups + corruption recovery) is the production-grade
-path documented in `docs/DEPLOY.md`.
+Single Vercel project: Vite static frontend + FastAPI python function at `/api/*`. Serverless FS is read-only, so the deployed API runs in **memory mode** (`STORAGE_PATH=:memory:`): the labeled synthetic corpus seeds at cold start, and `/api/v1/health` reports `storage_mode: memory`. The durable deployment — real JSON store, observatory background thread, systemd — is one command via `deploy/durable-observatory.sh`.
 
-- Frontend: `scripts/vercel-build.sh` stages `deploy/dist` (static) + root `api/` (function).
-- API: `api/index.py` entrypoint; rewrites route `/api/*` → function, everything else → SPA.
-- Deploy: `npx vercel deploy --prod --yes` (alias `remnant-two`).
-
-## Honesty table
+## Honesty
 
 | Area | Status |
 |------|--------|
-| Core domain + inference + experiments + store | **Real — tested** (36 tests passing) |
-| Competing-hypothesis accounting (H1-H4) | **Real — tested** |
-| Adversarial token-collision guard | **Real — tested** |
-| Experiment planner + belief update | **Real — tested** |
-| Persistence across sessions (store) | **Real — tested** |
-| Minds Builder memory mirroring + recovery (to/from the persistent Mind's conversation) | **Real — verified live** (written + read back via recover; needs env to run) |
+| Core domain + inference + experiments + store | **Real — tested** (61 tests) |
 | Cross-language discovery engine (concept glossary) | **Real — tested** (candidate, never auto-merge; adversarial guard) |
+| H1–H4 accounting + deterministic verdicts | **Real — tested** (CLEARED / DISPROVEN / UNCERTAIN paths) |
+| Persistence across restart | **Real — tested** (store survives process restart) |
+| Minds memory mirroring + recovery | **Real — verified live** (written + read back via recover; needs env to run) |
+| Autonomous observatory (durable deploys) | **Real — verified** (background thread, no page load, audit provenance) |
 | Demo corpus | **Synthetic, labeled** — and NOT pre-encoded: the discovery engine decides the grouping |
-| Real community data ingestion | **Real — `scripts/import_youtube.py`** imported 226 real comments (public video, full provenance) into the dev store; live site runs on labeled synthetic + whatever a visitor ingests |
-| Frontend UI | Real — builds clean, rendered in browser |
-| Full live Minds loop (autonomous follow-up executed THROUGH the Mind) | **Not claimed** — the observatory runs in the backend; the Mind holds the memory narrative (recoverable), the backend does the deterministic accounting |
+| Real community data ingestion | **Real — `scripts/import_youtube.py`** (226 real public comments, full provenance) |
+| Frontend UI | **Real** — builds clean, rendered in browser |
+| Full live Minds loop (actions executed THROUGH the Mind) | **Not claimed** — the observatory runs in the backend; the Mind holds the narrative, the backend does the accounting |
 
-## Limitations
+## Contributing
 
-- Semantic grouping in the core slice uses token-aware, evidence-accounted matching,
-  not embeddings; the *accounting* is deterministic and inspectable, which is the
-  defensible part. Embeddings can plug in behind the same interface.
-- H1-vs-H2 ambiguity is inherent to the problem; the product treats it as the feature.
-- This is a vertical slice, not a platform: one undeniable mechanism, demonstrated
-  flawlessly, rather than ten shallow features.
-
-## Future directions
-
-Creator community memory → unresolved-need intelligence → experiment engine →
-creator-product validation → long-term audience relationship infrastructure.
+This is a Creative Minds Jam #1 submission. The code is structured as a vertical slice: one mechanism — *candidate recurring need → competing hypotheses → pre-registered experiment → measured verdict → persistent belief* — demonstrated completely rather than ten shallow features. PRs are welcome for anything that deepens that slice: embeddings behind the same interface, real community connectors, creator notification surfaces, or sharper hypotheses.
 
 ---
 
-*REMNANT is not an archive. It is a persistent, autonomous memory of unresolved
-audience need.*
+*REMNANT is not an archive. It is a persistent, autonomous memory of unresolved audience need.*
