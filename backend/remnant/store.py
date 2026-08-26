@@ -143,7 +143,18 @@ class Store:
 
     def get(self, remnant_id: str) -> Optional[Remnant]:
         with self._lock:
-            return self._remnants.get(remnant_id)
+            exact = self._remnants.get(remnant_id)
+            if exact is not None:
+                return exact
+            # Prefix-tolerant: the UI invites "first 8 chars" and serverless
+            # instances re-seed with fresh ids, so a stable prefix must resolve
+            # on ANY instance. Only a UNIQUE prefix resolves — ambiguous ones
+            # return None (not a guess).
+            if len(remnant_id) >= 8:
+                matches = [r for r in self._remnants.values() if r.remnant_id.startswith(remnant_id)]
+                if len(matches) == 1:
+                    return matches[0]
+            return None
 
     def all(self) -> list[Remnant]:
         with self._lock:

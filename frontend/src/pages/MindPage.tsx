@@ -14,6 +14,7 @@ export function MindPage() {
   const [askRid, setAskRid] = useState('')
   const [persist, setPersist] = useState<{ remnants_survived: number; reconnected: boolean } | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [askErr, setAskErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [remnants, setRemnants] = useState<{ remnant_id: string; title: string }[]>([])
   const [keyField, setKeyField] = useState('')
@@ -27,6 +28,9 @@ export function MindPage() {
         setMind(m); setActions(a.actions)
         setRemnants(rs.map((r) => ({ remnant_id: r.remnant_id, title: r.title })))
         setStatus(st)
+        // Prefill Ask with a valid id from THIS instance, so the first click
+        // always answers (ids are per-instance on serverless).
+        if (!askRid && rs.length) setAskRid(rs[0].remnant_id.slice(0, 8))
       })
       .catch((e: Error) => setErr(e.message))
   }
@@ -86,8 +90,10 @@ export function MindPage() {
 
   const ask = async (input: string) => {
     const id = resolveRid(input)
-    setBusy(true)
-    try { setAnswers((await api.ask(id)).answers) } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+    setBusy(true); setAskErr(null)
+    try { setAnswers((await api.ask(id)).answers) }
+    catch (e) { setAskErr((e as Error).message) }
+    finally { setBusy(false) }
   }
 
   const QUESTIONS: { key: keyof AskAnswers; label: string }[] = [
@@ -238,6 +244,7 @@ export function MindPage() {
             </button>
           ))}
         </div>
+        {askErr && <div className="ev ev-conflict" style={{ marginBottom: 12, fontSize: 13 }}>Error: {askErr}</div>}
         {answers ? (
           <div>
             {QUESTIONS.map((q) => (

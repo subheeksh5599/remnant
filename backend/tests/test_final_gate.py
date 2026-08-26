@@ -169,3 +169,20 @@ def test_persistence_after_restart():
         s2 = Store(path)  # fresh instance = process restart
         assert s2.get(r.remnant_id) is not None
         assert s2.get(r.remnant_id).title == r.title
+
+
+def test_prefix_id_resolution():
+    """A stable 8-char prefix must resolve to a remnant on ANY instance
+    (serverless re-seeds new full ids; the UI invites 'first 8 chars')."""
+    with tempfile.TemporaryDirectory() as d:
+        s = Store(os.path.join(d, "t.db"))
+        r = _remnant()
+        s.upsert(r)
+        # exact full id
+        assert s.get(r.remnant_id) is not None
+        # 8-char prefix (unique)
+        assert s.get(r.remnant_id[:8]) is not None
+        # ambiguous prefix (too short, or matching >1 remnant) -> None, not a guess
+        assert s.get(r.remnant_id[:4]) is None
+        # unknown prefix -> None
+        assert s.get("deadbeef") is None

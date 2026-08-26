@@ -203,11 +203,38 @@ async function j<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   if (!res.ok) {
-    // Parse the consistent error schema when available.
     const detail = await res.json().catch(() => null)
-    throw new Error(detail?.error?.message ?? detail?.detail?.error?.message ?? `${res.status} ${res.statusText}`)
+    throw new Error(extractError(detail, res.status))
   }
   return res.json() as Promise<T>
+}
+
+/** Turn any error body into ONE clear human sentence. Never returns braces/objects. */
+function extractError(detail: unknown, status: number): string {
+  const d = detail as Record<string, unknown> | null
+  if (d) {
+    // FastAPI wraps our schema as {"detail": {"error": {"message": ...}}}
+    const inner = d.detail as Record<string, unknown> | null
+    const msg =
+      (inner?.error as Record<string, unknown> | null)?.message ??
+      (inner?.message as string | undefined) ??
+      (d.error as Record<string, unknown> | null)?.message ??
+      (d.message as string | undefined)
+    if (typeof msg === 'string' && msg.trim()) return msg.trim()
+    // validation errors come as {"detail": [{"msg": "..."}]}
+    if (Array.isArray(inner)) {
+      const first = (inner[0] as Record<string, unknown> | null)?.msg
+      if (typeof first === 'string') return first
+    }
+    // string body (some proxies return "NOT_FOUND" etc)
+    if (typeof detail === 'string' && detail.trim()) return detail.trim()
+  }
+  if (status === 404) return 'Not found — check the id and try again'
+  if (status === 409) return 'Already recorded — outcomes are immutable'
+  if (status === 401) return 'Unauthorized'
+  if (status === 422) return 'Invalid input — please check the fields'
+  if (status === 503) return 'The observatory is not running on this instance'
+  return `Request failed (${status})`
 }
 
 // --- runtime response validation (trust nothing from the wire) ------------------
