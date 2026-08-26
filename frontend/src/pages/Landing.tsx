@@ -29,8 +29,9 @@ export function Landing() {
           </h1>
           <p className="lede" style={{ marginTop: 20 }}>
             Audience needs disappear into the conversation. REMNANT is a persistent Minds agent
-            that remembers unresolved needs across time — preserves uncertainty about why they recur,
-            and runs small experiments to discover which needs are actually worth acting on now.
+            that discovers <b>candidate recurring needs</b> from raw community evidence — preserves
+            competing hypotheses about why they recur, tests them with pre-registered experiments,
+            and learns from the measured outcome which needs are actually worth acting on now.
           </p>
           <p className="hero-sub" style={{ marginTop: 12 }}>
             Audience needs disappear from the conversation. REMNANT remembers them.
@@ -60,8 +61,9 @@ export function Landing() {
               <span className="meta">The mechanism</span>
               <h3 style={{ marginTop: 10 }}>One undeniable loop, demonstrated flawlessly</h3>
               <p style={{ marginTop: 8 }}>
-                historical evidence → current evidence → competing hypotheses → concrete experiment →
-                observable outcome → persistent belief update. Then reload the app and ask:
+                raw evidence → <b>candidate recurring need</b> (discovered, never assumed) →
+                competing hypotheses H1–H4 → pre-registered experiment → observable outcome →
+                deterministic verdict → persistent belief update. Then reload the app and ask:
                 “What do you currently believe about this need?” The Mind remembers the entire chain.
               </p>
             </div>
