@@ -234,13 +234,13 @@ def analyze_relationship(a: str, b: str) -> dict:
             "no token overlap but matched concepts — continuity is PLAUSIBLE, not proven; "
             "an experiment is required to disambiguate H1 (persistent need) vs H2 (new cohort)"
         )
-    elif subject_shared and not intent_shared and len(shared_tokens) == 0:
-        # Only the subject concept matches — a weak link; separate needs on the
-        # same topic must NOT collapse into one remnant on one concept alone.
-        relationship, confidence = "insufficient_evidence", "low"
+    elif subject_shared and not intent_shared:
+        # Only the subject concept matches — weak but real: same topic. This is
+        # how "Please make an app" links to "Any chance of a mobile app?"
+        # (shared mobile_app). Low-confidence candidate — probe decides.
+        relationship, confidence = "candidate", "low"
         uncertainty.append(
-            "only the subject concept matches — the two may be different needs on the same topic; "
-            "a probe decides (single-concept links are not merged)"
+            "only the subject concept matches — same topic, but the two may be different needs; a probe decides"
         )
     else:
         relationship, confidence = "insufficient_evidence", "low"
