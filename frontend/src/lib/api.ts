@@ -107,6 +107,15 @@ export interface DiscoveryEntry {
   evidence: string
 }
 
+export interface ImportResult {
+  source: 'github' | 'youtube' | 'discord'
+  repo?: string
+  video?: string
+  items: number
+  note?: string
+  log: { action: string; issue?: string; comment?: string; message?: string; remnant: string; verdict: string }[]
+}
+
 export interface MindState {
   ok: boolean
   mind_id?: string
@@ -318,6 +327,12 @@ export const api = {
   audit: (limit = 100) => j<{ events: AuditEvent[]; count: number }>(`/api/v1/audit?limit=${limit}`),
   demoLoad: () =>
     j<{ loaded: number; synthetic: boolean; label: string; discovery?: DiscoveryEntry[]; note?: string }>('/api/v1/demo/load', { method: 'POST' }),
+  importGithub: (repo: string, limit = 12) =>
+    j<ImportResult>('/api/v1/import/github', { method: 'POST', body: JSON.stringify({ repo, limit }) }),
+  importYoutube: (url: string, maxComments = 60) =>
+    j<ImportResult>('/api/v1/import/youtube', { method: 'POST', body: JSON.stringify({ url, max_comments: maxComments }) }),
+  importDiscord: (raw: string) =>
+    j<ImportResult>('/api/v1/import/discord', { method: 'POST', body: JSON.stringify({ raw }) }),
   demoReconnect: () =>
     j<{ reconnected: boolean; remnants_survived: number; note: string }>('/api/v1/demo/reconnect', { method: 'POST' }),
 }

@@ -11,5 +11,10 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.optional-dependencies]
+importers = [
+    "yt-dlp>=2025.1",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -153,6 +153,21 @@ class IngestExpressionRequest(BaseModel):
     occurred_at: Optional[str] = None
     url: Optional[str] = None
     audience_segment: Optional[str] = None
+    author: Optional[str] = None
+
+
+class ImportGitHubRequest(BaseModel):
+    repo: str = Field(min_length=3, max_length=200)
+    limit: int = Field(default=12, ge=1, le=50)
+
+
+class ImportYouTubeRequest(BaseModel):
+    url: str = Field(min_length=8, max_length=500)
+    max_comments: int = Field(default=60, ge=1, le=300)
+
+
+class ImportDiscordRequest(BaseModel):
+    raw: str = Field(min_length=1)  # JSON array, CSV, or pasted lines
 
 
 class CreateRemnantRequest(BaseModel):
@@ -560,6 +575,44 @@ def demo_reconnect(request: Request) -> dict:
             else "serverless memory mode: no disk — state lives for the lifetime of the instance (honest: persistence proof requires the durable deployment)"
         ),
     }
+
+
+# --- REAL community data import (fetch from the website, not scripts) ------------
+
+@app.post("/api/v1/import/github")
+def import_github(req: ImportGitHubRequest, request: Request = None) -> dict:  # type: ignore[assignment]
+    from .ingest import import_github as run_import
+
+    try:
+        result = run_import(store, req.repo, req.limit)
+    except ValueError as e:
+        raise _err(request, "import_failed", str(e), 422) from e
+    audit("import.github", request_id=getattr(request.state, "request_id", None), repo=req.repo, items=result.get("items", 0))
+    return result
+
+
+@app.post("/api/v1/import/youtube")
+def import_youtube(req: ImportYouTubeRequest, request: Request = None) -> dict:  # type: ignore[assignment]
+    from .ingest import import_youtube as run_import
+
+    try:
+        result = run_import(store, req.url, req.max_comments)
+    except ValueError as e:
+        raise _err(request, "import_failed", str(e), 422) from e
+    audit("import.youtube", request_id=getattr(request.state, "request_id", None), url=req.url[:60], items=result.get("items", 0))
+    return result
+
+
+@app.post("/api/v1/import/discord")
+def import_discord(req: ImportDiscordRequest, request: Request = None) -> dict:  # type: ignore[assignment]
+    from .ingest import import_discord as run_import
+
+    try:
+        result = run_import(store, req.raw)
+    except ValueError as e:
+        raise _err(request, "import_failed", str(e), 422) from e
+    audit("import.discord", request_id=getattr(request.state, "request_id", None), items=result.get("items", 0))
+    return result
 
 
 # --- back-compat: bare /api routes (same handlers) ------------------------------

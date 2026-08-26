@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type AdversarialResult } from '../lib/api'
+import { api, type AdversarialResult, type ImportResult } from '../lib/api'
 
 export function LabPage() {
   const [a, setA] = useState('How do I learn ZK?')
@@ -17,6 +17,11 @@ export function LabPage() {
     discovery?: { action: string; remnant: string; expression: string; verdict: string; evidence: string }[]
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [ghRepo, setGhRepo] = useState('')
+  const [ytUrl, setYtUrl] = useState('')
+  const [dcRaw, setDcRaw] = useState('')
+  const [imp, setImp] = useState<ImportResult | null>(null)
+  const [impBusy, setImpBusy] = useState<'github' | 'youtube' | 'discord' | null>(null)
 
   const analyze = async () => {
     setBusy(true)
@@ -38,6 +43,17 @@ export function LabPage() {
       const r = await api.demoReconnect()
       setDemo(r)
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  const doImport = async (kind: 'github' | 'youtube' | 'discord') => {
+    setImpBusy(kind); setImp(null); setErr(null)
+    try {
+      let r: ImportResult
+      if (kind === 'github') r = await api.importGithub(ghRepo.trim())
+      else if (kind === 'youtube') r = await api.importYoutube(ytUrl.trim())
+      else r = await api.importDiscord(dcRaw)
+      setImp(r)
+    } catch (e) { setErr((e as Error).message) } finally { setImpBusy(null) }
   }
 
   const PRESETS: { a: string; b: string; note: string }[] = [
@@ -111,6 +127,68 @@ export function LabPage() {
           The guard is deliberately conservative: shared tokens are never treated as continuity on
           their own. "ZK badge is broken" vs "how do I learn ZK" must come back different needs.
         </p>
+      </div>
+
+      {/* Import real community data */}
+      <div className="card-title" style={{ marginTop: 24 }}><h3>Import real community data</h3></div>
+      <div className="card" style={{ marginBottom: 8 }}>
+        <p className="small muted" style={{ marginBottom: 12 }}>
+          Fetch REAL evidence from public sources, right from this site — YouTube comments,
+          GitHub issues, or pasted Discord exports. Each expression keeps full provenance
+          (source, author, url, timestamps) and flows through the same discovery engine.
+        </p>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <label className="label">YouTube video URL</label>
+            <input className="input" placeholder="https://www.youtube.com/watch?v=..." value={ytUrl}
+              onChange={(ev) => setYtUrl(ev.target.value)} />
+            <button className="btn" style={{ marginTop: 8 }} disabled={impBusy !== null || !ytUrl.trim()}
+              onClick={() => doImport('youtube')}>
+              {impBusy === 'youtube' ? 'Fetching…' : 'Import YouTube comments'}
+            </button>
+            <p className="small muted" style={{ marginTop: 6 }}>fetches up to 60 real comments via yt-dlp (no API key).</p>
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <label className="label">GitHub repo (owner/repo)</label>
+            <input className="input" placeholder="foundry-rs/foundry" value={ghRepo}
+              onChange={(ev) => setGhRepo(ev.target.value)} />
+            <button className="btn" style={{ marginTop: 8 }} disabled={impBusy !== null || !ghRepo.trim()}
+              onClick={() => doImport('github')}>
+              {impBusy === 'github' ? 'Fetching…' : 'Import GitHub issues'}
+            </button>
+            <p className="small muted" style={{ marginTop: 6 }}>fetches real open issues + comments via the GitHub API (no key).</p>
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <label className="label">Discord export (paste)</label>
+            <textarea className="input" rows={2} placeholder={'jade: any chance of a mobile app?\nraz: please make an app'}
+              value={dcRaw} onChange={(ev) => setDcRaw(ev.target.value)} />
+            <button className="btn" style={{ marginTop: 8 }} disabled={impBusy !== null || !dcRaw.trim()}
+              onClick={() => doImport('discord')}>
+              {impBusy === 'discord' ? 'Fetching…' : 'Import Discord messages'}
+            </button>
+            <p className="small muted" style={{ marginTop: 6 }}>accepts pasted lines, JSON array, or CSV.</p>
+          </div>
+        </div>
+        {imp && (
+          <div className="evidence" style={{ marginTop: 14 }}>
+            <div className="ev ev-support">
+              Imported <b className="num">{imp.items}</b> real {imp.source} item{imp.items === 1 ? '' : 's'}
+              {imp.video && <> from '<b>{imp.video.slice(0, 45)}</b>'</>}
+              {imp.repo && <> from <b>{imp.repo}</b></>}
+              {imp.note && <span className="muted"> — {imp.note}</span>}
+            </div>
+            <div className="meta" style={{ marginTop: 6 }}>Discovery log — what REMNANT decided</div>
+            {imp.log.slice(0, 6).map((e, i) => (
+              <div className="ev ev-neutral" key={i} style={{ fontSize: 12.5 }}>
+                <b className="mono">{e.action}</b> {e.issue ? `#${e.issue}` : ''} {e.comment ? `"${e.comment.slice(0, 40)}"` : ''} {e.message ? `"${e.message.slice(0, 40)}"` : ''}
+                {' '}→ <b>{e.remnant}</b> {e.verdict !== 'new_candidate' ? `(${e.verdict})` : '(new candidate)'}
+              </div>
+            ))}
+            <p className="small muted" style={{ marginTop: 8 }}>
+              Imported evidence is REAL and labeled — never relabeled as synthetic. See it in <Link to="/remnants" style={{ color: 'var(--ink)' }}>Remnants</Link>.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Demo controls */}
