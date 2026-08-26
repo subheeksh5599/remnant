@@ -5,6 +5,7 @@ import { Dashboard } from './pages/Dashboard'
 import { RemnantsPage } from './pages/RemnantsPage'
 import { RemnantDetail } from './pages/RemnantDetail'
 import { MindPage } from './pages/MindPage'
+import { ImportPage } from './pages/ImportPage'
 import { SystemPage } from './pages/SystemPage'
 import { LabPage } from './pages/LabPage'
 
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/remnants" element={<RemnantsPage />} />
         <Route path="/remnants/:rid" element={<RemnantDetail />} />
         <Route path="/mind" element={<MindPage />} />
+        <Route path="/import" element={<ImportPage />} />
         <Route path="/system" element={<SystemPage />} />
         <Route path="/lab" element={<LabPage />} />
         <Route path="*" element={<Dashboard />} />

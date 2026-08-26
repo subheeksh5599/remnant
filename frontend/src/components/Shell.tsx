@@ -13,6 +13,7 @@ const SECTIONS: { title: string; links: { to: string; label: string; icon: strin
   {
     title: 'Evidence',
     links: [
+      { to: '/import', label: 'Import data', icon: '↓' },
       { to: '/system', label: 'System & audit', icon: '≡' },
       { to: '/lab', label: 'Safety lab', icon: '◈' },
     ],
