@@ -36,6 +36,11 @@ class EvidenceStrength(str, enum.Enum):
 
 
 class ResolutionState(str, enum.Enum):
+    # Discovery lifecycle: a need that REMNANT *discovered* vs one the creator
+    # *confirmed*. The distinction is explicit so nobody mistakes a hypothesis
+    # for a fact.
+    CANDIDATE = "candidate"  # discovered by inference; unconfirmed by the creator
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"  # matcher cannot yet claim a link
     UNRESOLVED = "unresolved"
     DORMANT = "dormant"
     FULFILLED = "fulfilled"
@@ -43,7 +48,7 @@ class ResolutionState(str, enum.Enum):
     PARTIALLY_FULFILLED = "partially_fulfilled"
     REVISITED = "revisited"
     UNDER_EXPERIMENT = "under_experiment"
-    VALIDATED = "validated"
+    VALIDATED = "validated"  # creator confirmed the need (adopted)
     DISPROVEN = "disproven"
     UNCERTAIN = "uncertain"
 
@@ -78,7 +83,10 @@ class AudienceExpression(BaseModel):
     text: str
     source: Source
     occurred_at: datetime
+    author: Optional[str] = None  # public-facing username when legitimately available
     audience_segment: Optional[str] = None
+    ingested_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    url: Optional[str] = None  # direct link to the evidence, when known
     creator_response: Optional[str] = None
 
 
@@ -105,6 +113,10 @@ class Experiment(BaseModel):
     crossed_threshold: Optional[bool] = None  # deterministic verdict vs the pre-registered number
     outcome: Optional[str] = None  # human summary of the verdict
     decided_at: Optional[datetime] = None
+    # Creator-defined controls (P2): when set, these OVERRIDE the planner defaults.
+    target_population: Optional[str] = None  # audience segment the probe reaches
+    measurement_window: Optional[str] = None  # e.g. "48h", "7d"
+    defined_by_creator: bool = False  # True when the creator supplied any override
 
 
 class RemnantConfiguration(BaseModel):
@@ -114,7 +126,7 @@ class RemnantConfiguration(BaseModel):
 class Remnant(BaseModel):
     """A time-aware hypothesis about an unresolved audience need."""
 
-    schema_version: int = 1  # for future migrations
+    schema_version: int = 2  # v2: discovery lifecycle (candidate/insufficient_evidence) + discovered_links
     remnant_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     title: str
     underlying_need_hypothesis: str
@@ -129,19 +141,23 @@ class Remnant(BaseModel):
     history: list[str] = Field(default_factory=list)  # mind log
     mind_notes: list[str] = Field(default_factory=list)
     state_transitions: list[dict] = Field(default_factory=list)  # state-change audit
+    discovered_links: list[dict] = Field(default_factory=list)  # P0.2: matcher evidence for each link
 
     # --- state transition guard -------------------------------------------------
     _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-        "unresolved": {"dormant", "fulfilled", "rejected", "revisited", "uncertain", "under_experiment", "disproven"},
+        "candidate": {"unresolved", "dormant", "fulfilled", "rejected", "revisited", "uncertain",
+                      "under_experiment", "disproven", "insufficient_evidence", "validated"},
+        "insufficient_evidence": {"candidate", "unresolved", "dormant", "revisited", "uncertain", "disproven"},
+        "unresolved": {"dormant", "fulfilled", "rejected", "revisited", "uncertain", "under_experiment", "disproven", "validated"},
         "dormant": {"unresolved", "fulfilled", "rejected", "revisited", "uncertain", "under_experiment", "disproven"},
-        "under_experiment": {"revisited", "disproven", "uncertain", "fulfilled", "rejected"},
+        "under_experiment": {"revisited", "disproven", "uncertain", "fulfilled", "rejected", "validated"},
         "uncertain": {"revisited", "disproven", "fulfilled", "rejected", "under_experiment"},
-        "revisited": {"fulfilled", "rejected", "disproven", "uncertain"},
+        "revisited": {"fulfilled", "rejected", "disproven", "uncertain", "validated"},
         "fulfilled": set(),
         "rejected": set(),
         "disproven": {"revisited", "dormant", "uncertain"},
         "partially_fulfilled": {"fulfilled", "rejected"},
-        "validated": {"fulfilled"},
+        "validated": {"fulfilled", "rejected"},
     }
 
     @classmethod

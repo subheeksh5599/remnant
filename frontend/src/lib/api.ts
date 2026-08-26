@@ -5,7 +5,7 @@ const API_BASE = (import.meta.env?.VITE_API_BASE as string | undefined) ?? ''
 
 export type EvidenceStrength = 'low' | 'medium' | 'high'
 export type ResolutionState =
-  | 'unresolved' | 'dormant' | 'fulfilled' | 'rejected'
+  | 'candidate' | 'insufficient_evidence' | 'unresolved' | 'dormant' | 'fulfilled' | 'rejected'
   | 'partially_fulfilled' | 'revisited' | 'under_experiment'
   | 'validated' | 'disproven' | 'uncertain'
 
@@ -20,7 +20,10 @@ export interface AudienceExpression {
   text: string
   source: Source
   occurred_at: string
+  author?: string | null
   audience_segment?: string | null
+  ingested_at?: string
+  url?: string | null
   creator_response?: string | null
 }
 
@@ -54,6 +57,9 @@ export interface Experiment {
   outcome?: string | null
   created_at: string
   decided_at?: string | null
+  target_population?: string | null
+  measurement_window?: string | null
+  defined_by_creator?: boolean
 }
 
 export interface StateTransition {
@@ -77,6 +83,28 @@ export interface Remnant {
   experiments: Experiment[]
   history: string[]
   state_transitions: StateTransition[]
+  discovered_links?: DiscoveryLink[]
+}
+
+export interface DiscoveryLink {
+  expression_id?: string
+  text?: string
+  against_expression_id: string
+  against_text: string
+  relationship: 'same_need' | 'candidate' | 'insufficient_evidence' | 'different_need'
+  confidence: string
+  supporting: string[]
+  conflicting: string[]
+  uncertainty: string[]
+  shared_concepts: string[]
+}
+
+export interface DiscoveryEntry {
+  action: 'linked' | 'created'
+  remnant: string
+  expression: string
+  verdict: string
+  evidence: string
 }
 
 export interface MindState {
@@ -122,9 +150,13 @@ export interface ObservatoryAction {
 export interface AdversarialResult {
   expression_a: string
   expression_b: string
-  relationship: 'same_need' | 'different_need' | 'insufficient_evidence'
-  confidence: 'high' | 'candidate' | 'low'
+  relationship: 'same_need' | 'candidate' | 'different_need' | 'insufficient_evidence'
+  confidence: 'high' | 'medium' | 'candidate' | 'low'
+  supporting: string[]
+  conflicting: string[]
+  uncertainty: string[]
   reasoning: string[]
+  shared_concepts: string[]
 }
 
 export interface AskAnswers {
@@ -223,8 +255,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ decision, reason }),
     }),
-  planExperiment: (rid: string) =>
-    j<Experiment>(`/api/v1/remnants/${rid}/experiments`, { method: 'POST' }),
+  planExperiment: (rid: string, overrides?: { metric?: string; threshold?: number; target_population?: string; measurement_window?: string }) =>
+    j<Experiment>(`/api/v1/remnants/${rid}/experiments`, {
+      method: 'POST',
+      body: JSON.stringify(overrides ?? {}),
+    }),
   recordOutcome: (rid: string, eid: string, observedValue: number) =>
     j<Remnant>(`/api/v1/remnants/${rid}/experiments/${eid}/outcome`, {
       method: 'POST',
@@ -251,9 +286,11 @@ export const api = {
   mindsDisconnect: () =>
     j<{ connected: boolean }>('/api/v1/minds/disconnect', { method: 'POST' }),
   mindsStatus: () => j<MindsStatus>('/api/v1/minds/status'),
+  mindsRecover: (rid: string) =>
+    j<{ remnant_id: string; recovered: boolean; memory_lines?: string[]; count?: number; note?: string; error?: string }>(`/api/v1/minds/recover/${rid}`),
   audit: (limit = 100) => j<{ events: AuditEvent[]; count: number }>(`/api/v1/audit?limit=${limit}`),
   demoLoad: () =>
-    j<{ loaded: number; synthetic: boolean; label: string }>('/api/v1/demo/load', { method: 'POST' }),
+    j<{ loaded: number; synthetic: boolean; label: string; discovery?: DiscoveryEntry[]; note?: string }>('/api/v1/demo/load', { method: 'POST' }),
   demoReconnect: () =>
     j<{ reconnected: boolean; remnants_survived: number; note: string }>('/api/v1/demo/reconnect', { method: 'POST' }),
 }
@@ -306,6 +343,8 @@ export const HYPOTHESIS_LABELS: Record<string, { label: string; short: string }>
 }
 
 export const STATE_LABELS: Record<string, string> = {
+  candidate: 'Candidate (discovered)',
+  insufficient_evidence: 'Insufficient evidence',
   unresolved: 'Unresolved',
   dormant: 'Dormant',
   fulfilled: 'Fulfilled',
@@ -319,6 +358,8 @@ export const STATE_LABELS: Record<string, string> = {
 }
 
 export const RESOLUTION_COLORS: Record<string, 'badge-ok' | 'badge-warn' | 'badge-err' | 'badge-info' | 'badge-neutral'> = {
+  candidate: 'badge-info',
+  insufficient_evidence: 'badge-neutral',
   unresolved: 'badge-warn',
   dormant: 'badge-neutral',
   fulfilled: 'badge-ok',

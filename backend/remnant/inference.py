@@ -34,72 +34,231 @@ class SemanticMatch:
     notes: str = ""
 
 
-# --- Adversarial token-collision guard ---------------------------------------
-# Two expressions that share a token are NOT evidence of continuity. We explicitly
-# track this so we never over-merge.
+# --- Transparent concept glossary (deterministic, auditable) ------------------
+# Cross-language need discovery WITHOUT an LLM: a curated, inspectable mapping
+# from surface words to NEED CONCEPTS. Two expressions that share a concept can
+# become a CANDIDATE relationship even with zero token overlap — but never an
+# automatic merge. The glossary is small, explicit, and shown in the reasoning
+# evidence so a judge can audit exactly why two expressions were linked.
+#
+# Concept assignment is a rule, not a statistical guess. This is the honest
+# middle ground between naive token matching and an un-auditable embedding.
+
+CONCEPT_GLOSSARY: dict[str, set[str]] = {
+    # zero-knowledge domain (the demo's canonical need)
+    "zk": {"zero_knowledge"},
+    "zero-knowledge": {"zero_knowledge"},
+    "zero knowledge": {"zero_knowledge"},
+    "zkp": {"zero_knowledge"},
+    "zksnarks": {"zero_knowledge"},
+    "proofs": {"zero_knowledge"},
+    "crypto": {"zero_knowledge"},
+    "cryptography": {"zero_knowledge"},
+    # learning / on-ramp intent (the common underlying NEED shape)
+    "tutorial": {"learning_resource", "on_ramp"},
+    "tutor": {"learning_resource"},
+    "learn": {"learning_resource", "on_ramp"},
+    "learning": {"learning_resource", "on_ramp"},
+    "beginner": {"on_ramp"},
+    "beginners": {"on_ramp"},
+    "start": {"on_ramp", "get_started"},
+    "starting": {"on_ramp", "get_started"},
+    "build": {"get_started", "building"},
+    "building": {"get_started", "building"},
+    "path": {"on_ramp"},
+    "guide": {"learning_resource"},
+    "intro": {"learning_resource"},
+    "introduction": {"learning_resource"},
+    "explainer": {"learning_resource"},
+    "course": {"learning_resource"},
+    "on-ramp": {"on_ramp"},
+    "onramp": {"on_ramp"},
+    "new to": {"on_ramp"},  # "completely new to ZK" = an on-ramp ask
+    "newbie": {"on_ramp"},
+    "noob": {"on_ramp"},
+    # fault/issue context (the adversarial collision guard)
+    "broken": {"fault_report"},
+    "bug": {"fault_report"},
+    "fix": {"fault_report"},
+    "error": {"fault_report"},
+    "crash": {"fault_report"},
+    "issue": {"fault_report"},
+    "fails": {"fault_report"},
+    "not working": {"fault_report"},
+    # merch / commerce
+    "merch": {"merchandise"},
+    "hoodie": {"merchandise"},
+    "shirt": {"merchandise"},
+    "tshirt": {"merchandise"},
+    "store": {"merchandise"},
+    # app / mobile
+    "app": {"mobile_app"},
+    "mobile": {"mobile_app"},
+    "android": {"mobile_app"},
+    "ios": {"mobile_app"},
+    "iphone": {"mobile_app"},
+}
+
+# Concepts considered "the same underlying need" when both sides share them.
+# Two expressions sharing ONLY a domain concept (zero_knowledge) → candidate.
+# Sharing a domain concept + an intent concept (on_ramp) → stronger candidate.
+_SUBJECT_CONCEPTS = {"zero_knowledge", "merchandise", "mobile_app", "fault_report"}
+_INTENT_CONCEPTS = {"learning_resource", "on_ramp", "get_started", "building"}
+
+
+def _concepts(s: str) -> set[str]:
+    """Map an expression's surface words to need concepts via the glossary.
+    Multi-word phrases are checked first; falls back to single tokens."""
+    import re
+
+    lowered = s.lower().strip()
+    matched: set[str] = set()
+    tokens = _tokens(s)
+
+    # phrase-level lookups (multi-word keys)
+    for phrase, concepts in CONCEPT_GLOSSARY.items():
+        if len(phrase.split()) > 1 and phrase in lowered:
+            matched.update(concepts)
+    # word-level lookups
+    for t in tokens:
+        concepts = CONCEPT_GLOSSARY.get(t)
+        if concepts:
+            matched.update(concepts)
+    return matched
+
+
+def _stopwords() -> set[str]:
+    return {"how", "do", "i", "you", "we", "a", "an", "the", "can", "make", "me",
+            "to", "for", "of", "is", "are", "it", "this", "that", "with", "on",
+            "in", "at", "my", "your", "our", "please", "help"}
+
 
 def analyze_relationship(a: str, b: str) -> dict:
-    """Adversarial relationship analysis between two expressions.
+    """Cross-language need relationship analysis between two expressions.
 
-    Deliberately conservative: shared tokens are necessary but NOT sufficient
-    for 'same need' — the collision case ('How do I learn ZK?' vs 'ZK badge is
-    broken') must come back 'different need', not a false merge. Output is
-    structured and schema-validated by the API layer.
+    Layers (all deterministic, all inspectable):
+      1. token overlap (with stemming + stopword filter)
+      2. concept overlap via the transparent glossary — this is how
+         "beginner ZK tutorial" and "start building with zero knowledge"
+         become a CANDIDATE (shared `zero_knowledge` concept) with zero
+         shared tokens.
+      3. adversarial collision guard — fault/issue context blocks a merge.
+    Output is structured: relationship, confidence, supporting evidence,
+    conflicting evidence, uncertainty, and shared concepts. NEVER auto-merges;
+    `candidate` is the strongest cross-language claim, and it demands a probe.
     """
     ta, tb = _tokens(a), _tokens(b)
-    shared = ta & tb
-    # stopword list: tokens too generic to carry meaning about the NEED
-    stop = {"how", "do", "i", "you", "we", "a", "an", "the", "can", "make", "me",
-            "to", "for", "of", "is", "are", "it", "this", "that", "with", "on",
-            "in", "at", "my", "your", "our", "please", "help", "start"}
-    meaningful_shared = shared - stop
-    answers = [x for x in _tokens(b) if x not in stop]
+    stop = _stopwords()
+    shared_tokens = (ta & tb) - stop
+    ca, cb = _concepts(a), _concepts(b)
+    shared_concepts = ca & cb
+    subject_shared = shared_concepts & _SUBJECT_CONCEPTS
+    intent_shared = shared_concepts & _INTENT_CONCEPTS
+    b_tokens = [t for t in tb if t not in stop]
 
-    if not meaningful_shared:
-        return {
-            "expression_a": a, "expression_b": b,
-            "relationship": "insufficient_evidence",
-            "confidence": "low",
-            "reasoning": [
-                "no meaningful shared content tokens",
-                f"raw shared tokens: {sorted(shared)[:6] or 'none'} (stopwords only)",
-                "semantic overlap without shared vocabulary cannot be asserted by token-aware matching — needs an embedding or a probe",
-            ],
-        }
-    if len(meaningful_shared) >= 2 and len(answers) >= 3:
-        return {
-            "expression_a": a, "expression_b": b,
-            "relationship": "same_need",
-            "confidence": "candidate",
-            "reasoning": [
-                f"meaningful shared tokens: {sorted(meaningful_shared)}",
-                "candidate continuity — still requires evidence-accounted review",
-            ],
-        }
-    # single meaningful shared token: real but weak — insufficient to assert
-    # continuity, and NOT enough to dismiss (the collision guard).
-    has_collision_marker = any(
-        t in {"bug", "broken", "fix", "error", "crash", "issue", "fail"} for t in answers
-    )
-    if has_collision_marker:
+    supporting: list[str] = []
+    conflicting: list[str] = []
+    uncertainty: list[str] = []
+
+    # ---- fault/issue collision guard (always checked first) ----
+    if "fault_report" in (ca | cb):
+        if "fault_report" in shared_concepts:
+            return {
+                "expression_a": a, "expression_b": b,
+                "relationship": "different_need",
+                "confidence": "high",
+                "supporting": ["both mention fault/issue context (broken, bug, fix, error…)"],
+                "conflicting": ["fault reports express a broken CURRENT thing, not an unmet future need"],
+                "uncertainty": ["if the fault is about the SAME feature the need is for, this could be 2 facets of one topic — not merged without a probe"],
+                "reasoning": [
+                    "adversarial collision guard: shared fault-report concept is NOT continuity",
+                ],
+                "shared_concepts": sorted(shared_concepts),
+            }
+        # one side is a fault report, the other is not — they don't align
         return {
             "expression_a": a, "expression_b": b,
             "relationship": "different_need",
             "confidence": "high",
-            "reasoning": [
-                f"shared token '{sorted(meaningful_shared)[0]}' appears in a bug/issue",
-                "context — likely a fault report, not an unmet need",
-                "adversarial collision guard: shared token alone is not continuity",
-            ],
+            "supporting": [f"fault-report concept present: {sorted(ca | cb)}"],
+            "conflicting": ["one side is a fault report, the other is a need — different kinds of message"],
+            "uncertainty": [],
+            "reasoning": ["adversarial collision guard: fault/issue context is not an unmet need on its own"],
+            "shared_concepts": sorted(shared_concepts),
         }
+
+    # ---- evidence: token overlap ----
+    if shared_tokens:
+        supporting.append(f"meaningful shared tokens: {sorted(shared_tokens)}")
+    else:
+        uncertainty.append("no shared content tokens — overlap, if any, is conceptual, not lexical")
+
+    # ---- evidence: concept overlap (the cross-language discovery) ----
+    if subject_shared:
+        supporting.append(
+            f"shared need-domain concept(s): {sorted(subject_shared)} — "
+            "different words pointing at the same subject"
+        )
+    if intent_shared:
+        supporting.append(
+            f"shared intent concept(s): {sorted(intent_shared)} — "
+            "both express the same kind of ask (learn / get started / build)"
+        )
+    if not shared_concepts:
+        uncertainty.append("no shared concepts — cannot assert a need relationship from this matcher alone")
+
+    # ---- verdict ----
+    if not shared_tokens and not shared_concepts:
+        return {
+            "expression_a": a, "expression_b": b,
+            "relationship": "insufficient_evidence",
+            "confidence": "low",
+            "supporting": supporting,
+            "conflicting": conflicting,
+            "uncertainty": [
+                "zero lexical or conceptual overlap — the matcher cannot claim a link",
+                "a different need, or a need the glossary simply cannot see; requires a probe",
+            ],
+            "reasoning": supporting + conflicting + uncertainty,
+            "shared_concepts": sorted(shared_concepts),
+        }
+
+    # Strong lexical overlap (>=2 meaningful tokens) is the strongest signal.
+    if len(shared_tokens) >= 2 and len(b_tokens) >= 3:
+        relationship, confidence = "same_need", "candidate"
+        uncertainty.append("same_need is a candidate label — evidence-accounted review still applies")
+    elif subject_shared and intent_shared:
+        # Different words, same domain + same intent → the cross-language discovery.
+        relationship, confidence = "candidate", "medium"
+        uncertainty.append(
+            "no token overlap but matched concepts — continuity is PLAUSIBLE, not proven; "
+            "an experiment is required to disambiguate H1 (persistent need) vs H2 (new cohort)"
+        )
+    elif subject_shared and not intent_shared and len(shared_tokens) == 0:
+        # Only the subject concept matches — a weak link; separate needs on the
+        # same topic must NOT collapse into one remnant on one concept alone.
+        relationship, confidence = "insufficient_evidence", "low"
+        uncertainty.append(
+            "only the subject concept matches — the two may be different needs on the same topic; "
+            "a probe decides (single-concept links are not merged)"
+        )
+    else:
+        relationship, confidence = "insufficient_evidence", "low"
+        uncertainty.append(
+            "shared intent without shared subject cannot establish a need relationship"
+        )
+
+    if not supporting:
+        supporting.append("concept overlap detected (see shared_concepts)")
     return {
         "expression_a": a, "expression_b": b,
-        "relationship": "insufficient_evidence",
-        "confidence": "low",
-        "reasoning": [
-            f"single meaningful shared token: {sorted(meaningful_shared)}",
-            "not enough signal to assert continuity; requires a probe",
-        ],
+        "relationship": relationship,
+        "confidence": confidence,
+        "supporting": supporting,
+        "conflicting": conflicting,
+        "uncertainty": uncertainty,
+        "reasoning": supporting + (["CONFLICT: " + c for c in conflicting]) + (["UNCERTAIN: " + u for u in uncertainty]),
+        "shared_concepts": sorted(shared_concepts),
     }
 
 
@@ -145,6 +304,54 @@ def assess_expression_pair(new: str, old: str) -> dict:
         "token_overlap": True,
         "note": "token overlap is insufficient evidence of continuity on its own",
     }
+
+
+# --- Discovery engine (P0.2: inference pass-through) --------------------------
+# The demo dataset must NOT encode which expressions belong together. Instead,
+# every new expression is offered to every existing remnant's evidence; the
+# matcher decides the best candidate link (or none), and the remnant records
+# WHERE that link came from. This is what makes the 2022→2026 relationship
+# DISCOVERED by REMNANT rather than pre-encoded by the corpus.
+
+LINK_QUALITY_ORDER = {"same_need": 3, "candidate": 2, "insufficient_evidence": 1, "different_need": 0}
+
+
+def discover_for_expression(new_text: str, expressions: list[AudienceExpression]) -> Optional[dict]:
+    """Offer a raw expression to a set of existing expressions; return the best
+    candidate link (with matcher evidence) or None when nothing argues for a link.
+
+    The result is a HYPOTHESIS about grouping, never a merge: the caller decides
+    whether to attach, and the attachment records discovery evidence + confidence.
+    """
+    best: Optional[dict] = None
+    best_score = 0
+    for e in expressions:
+        rel = analyze_relationship(new_text, e.text)
+        score = LINK_QUALITY_ORDER.get(rel["relationship"], 0)
+        if score > best_score:
+            best_score = score
+            best = {
+                "against_expression_id": e.expression_id,
+                "against_text": e.text[:120],
+                "relationship": rel["relationship"],
+                "confidence": rel["confidence"],
+                "supporting": rel["supporting"],
+                "conflicting": rel["conflicting"],
+                "uncertainty": rel["uncertainty"],
+                "shared_concepts": rel["shared_concepts"],
+            }
+    if best is None or best_score == 0:
+        return None  # nothing argued for a link — different_need or no signal
+    return best
+
+
+def link_evidence_line(link: dict) -> str:
+    """One audit line for a discovered link: what the matcher found + its limits."""
+    rel = link["relationship"].replace("_", " ")
+    conf = link["confidence"]
+    concepts = ", ".join(link["shared_concepts"]) if link["shared_concepts"] else "none"
+    return (f"discovered candidate link ({rel}, {conf}) vs '{link['against_text']}' "
+            f"[concepts: {concepts}]")
 
 
 def assess_hypotheses(remnant: Remnant, current_evidence: float = 0.5) -> list[HypothesisAssessment]:

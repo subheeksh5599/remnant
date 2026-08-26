@@ -14,6 +14,7 @@ export function LabPage() {
     reconnected?: boolean
     remnants_survived?: number
     note?: string
+    discovery?: { action: string; remnant: string; expression: string; verdict: string; evidence: string }[]
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -40,9 +41,10 @@ export function LabPage() {
   }
 
   const PRESETS: { a: string; b: string; note: string }[] = [
+    { a: 'Can you make a beginner ZK tutorial?', b: 'How do I start building with zero knowledge?', note: 'cross-language — same need, zero shared words (discovery)' },
     { a: 'How do I learn ZK?', b: 'ZK badge for my profile looks broken', note: 'adversarial collision — shared token but a fault report' },
-    { a: 'Beginner ZK tutorial please', b: 'Please make ZK tutorials for beginners', note: 'true continuity — same need, different phrasing' },
-    { a: 'Can you make a beginner ZK tutorial?', b: 'How do I start building with zero knowledge?', note: 'semantic gap — token matcher cannot claim it (honest)' },
+    { a: 'Beginner ZK tutorial please', b: 'Please make ZK tutorials for beginners', note: 'true continuity — same need, similar phrasing' },
+    { a: 'I want to learn zero knowledge proofs', b: 'Can we get merch pls', note: 'same subject concept, different NEEDS (global discovery guard)' },
     { a: 'Merch restock when?', b: 'Add dark mode to the dashboard?', note: 'unrelated needs' },
   ]
 
@@ -83,11 +85,26 @@ export function LabPage() {
             <div className="ev ev-neutral">
               Relationship: <b>{result.relationship.replace(/_/g, ' ')}</b>
               <span className="muted"> · confidence {result.confidence}</span>
-              <span className={`badge ${result.relationship === 'same_need' ? 'badge-ok' : result.relationship === 'different_need' ? 'badge-err' : 'badge-warn'}`}
+              <span className={`badge ${result.relationship === 'same_need' ? 'badge-ok' : result.relationship === 'candidate' ? 'badge-info' : result.relationship === 'different_need' ? 'badge-err' : 'badge-warn'}`}
                 style={{ marginLeft: 8 }}>{result.relationship.replace(/_/g, ' ')}</span>
+              {result.shared_concepts?.length > 0 && (
+                <span className="muted small" style={{ marginLeft: 8 }}>concepts: {result.shared_concepts.join(', ')}</span>
+              )}
             </div>
-            <div className="meta" style={{ marginTop: 4 }}>Reasoning evidence</div>
-            {result.reasoning.map((line, i) => <div className="ev ev-neutral" key={i} style={{ fontSize: 12.5 }}>{line}</div>)}
+            <div className="meta" style={{ marginTop: 4 }}>Supporting evidence</div>
+            {result.supporting?.map((line, i) => <div className="ev ev-support" key={`s${i}`} style={{ fontSize: 12.5 }}>{line}</div>)}
+            {result.conflicting?.length > 0 && (
+              <>
+                <div className="meta" style={{ marginTop: 8 }}>Conflicting evidence</div>
+                {result.conflicting.map((line, i) => <div className="ev ev-conflict" key={`c${i}`} style={{ fontSize: 12.5 }}>{line}</div>)}
+              </>
+            )}
+            {result.uncertainty?.length > 0 && (
+              <>
+                <div className="meta" style={{ marginTop: 8 }}>Uncertainty</div>
+                {result.uncertainty.map((line, i) => <div className="ev ev-missing" key={`u${i}`} style={{ fontSize: 12.5 }}>{line}</div>)}
+              </>
+            )}
           </div>
         )}
         <p className="small muted" style={{ marginTop: 12 }}>
@@ -110,7 +127,18 @@ export function LabPage() {
             {demo.loaded !== undefined && (
               <div className="ev ev-neutral">
                 Loaded <b className="num">{demo.loaded}</b> remnants — <span className="synth-tag">{demo.label ?? 'synthetic'}</span>
+                {demo.note && <span className="muted"> ({demo.note})</span>}
               </div>
+            )}
+            {demo.discovery && demo.discovery.length > 0 && (
+              <>
+                <div className="meta" style={{ marginTop: 4 }}>Discovery log — what REMNANT decided, not the corpus</div>
+                {demo.discovery.slice(0, 8).map((d, i) => (
+                  <div className="ev ev-neutral" key={i} style={{ fontSize: 12.5 }}>
+                    <b className="mono">{d.action}</b> "{d.expression}" → <b>{d.remnant}</b> {d.verdict !== 'new_candidate' ? `(${d.verdict})` : '(new candidate)'}
+                  </div>
+                ))}
+              </>
             )}
             {demo.remnants_survived !== undefined && (
               <div className="ev ev-support">

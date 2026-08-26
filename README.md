@@ -70,17 +70,26 @@ Here is the smallest experiment that can."
 
 Two layers, deliberately split:
 
-1. **The persistent Mind holds the community-memory narrative.** On every
+1. **The persistent Mind holds the community-memory narrative — and can give it back.** On every
    belief-critical change (an audience expression ingested, an experiment outcome
    recorded, an autonomous observatory action), the backend mirrors a compact
    memory message into the Mind's conversation (`backend/remnant/minds.py` →
    `POST /v1/messaging/message`, verified live). The Mind's conversation history
    IS the continuity record: it remembers that the need existed, what evidence
    arrived, what was tested, what the number said, and what the belief became.
+   It is not write-only: `/api/v1/minds/recover/{rid}` reads the conversation
+   back and reconstructs what the agent knew about a need, even if the local
+   store is empty (verified live). Recovery is honest about its boundary: the
+   Mind returns the *narrative*; the *structured accounting* (thresholds,
+   verdicts, H1–H4 state) lives in the backend store.
 2. **The backend owns the deterministic accounting** — the H1–H4 evidence
    accounting, the pre-registered threshold, the crossing verdict, and the belief
    update are pure arithmetic in Python (no LLM inside the math), so they are
-   reproducible and probe-proof.
+   reproducible and probe-proof. **The discovery engine** (`inference.py`) links
+   expressions to needs via a transparent concept glossary + token overlap —
+   deterministic, auditable, and capable of *candidate* cross-language discovery
+   ("beginner ZK tutorial" ↔ "start building with zero knowledge") without an
+   LLM and without auto-merging.
 
 The local store is a durable backing so state survives restart; the Mind is the
 persistent steward of the story, not a database relabeled as "AI." The Minds
@@ -182,11 +191,12 @@ path documented in `docs/DEPLOY.md`.
 | Adversarial token-collision guard | **Real — tested** |
 | Experiment planner + belief update | **Real — tested** |
 | Persistence across sessions (store) | **Real — tested** |
-| Minds Builder memory mirroring (to the persistent Mind's conversation) | **Real — verified live** (message written + read back; needs env to run) |
-| Demo corpus (2022→2026 arc) | **Synthetic, clearly labeled** — never presented as real |
+| Minds Builder memory mirroring + recovery (to/from the persistent Mind's conversation) | **Real — verified live** (written + read back via recover; needs env to run) |
+| Cross-language discovery engine (concept glossary) | **Real — tested** (candidate, never auto-merge; adversarial guard) |
+| Demo corpus | **Synthetic, labeled** — and NOT pre-encoded: the discovery engine decides the grouping |
+| Real community data ingestion | **Real — `scripts/import_youtube.py`** imported 226 real comments (public video, full provenance) into the dev store; live site runs on labeled synthetic + whatever a visitor ingests |
 | Frontend UI | Real — builds clean, rendered in browser |
-| Real community data ingestion | **Pending** — needs a real export/corpus to ingest |
-| Full live Minds loop (autonomous follow-up executed THROUGH the Mind) | **Not claimed** — the observatory runs in the backend; the Mind holds the memory narrative, the backend does the deterministic accounting |
+| Full live Minds loop (autonomous follow-up executed THROUGH the Mind) | **Not claimed** — the observatory runs in the backend; the Mind holds the memory narrative (recoverable), the backend does the deterministic accounting |
 
 ## Limitations
 

@@ -273,17 +273,34 @@ def add_decision(rid: str, req: CreatorDecisionRequest, request: Request) -> dic
     return r.model_dump(mode="json")
 
 
+class CreateExperimentRequest(BaseModel):
+    metric: Optional[str] = Field(default=None, max_length=300)
+    threshold: Optional[float] = Field(default=None, gt=0, le=1)
+    target_population: Optional[str] = Field(default=None, max_length=200)
+    measurement_window: Optional[str] = Field(default=None, max_length=50)
+
+
 @app.post("/api/v1/remnants/{rid}/experiments")
-def create_experiment(rid: str, request: Request) -> dict:
+def create_experiment(rid: str, req: Optional[CreateExperimentRequest] = None, request: Request = None) -> dict:  # type: ignore[assignment]
     r = store.get(rid)
     if r is None:
         raise _err(request, "not_found", "remnant not found", 404)
-    exp = plan_experiment(r)
+    kwargs = {}
+    if req is not None:
+        if req.metric is not None:
+            kwargs["metric"] = req.metric
+        if req.threshold is not None:
+            kwargs["threshold"] = req.threshold
+        if req.target_population is not None:
+            kwargs["target_population"] = req.target_population
+        if req.measurement_window is not None:
+            kwargs["measurement_window"] = req.measurement_window
+    exp = plan_experiment(r, **kwargs)
     r.experiments.append(exp)
     r.touch()
-    r.history.append(f"experiment planned: {exp.experiment_id}")
+    r.history.append(f"experiment planned: {exp.experiment_id}" + (" (creator-defined)" if exp.defined_by_creator else ""))
     store.upsert(r)
-    audit("experiment.planned", request_id=getattr(request.state, "request_id", None), remnant_id=rid, experiment_id=exp.experiment_id)
+    audit("experiment.planned", request_id=getattr(request.state, "request_id", None), remnant_id=rid, experiment_id=exp.experiment_id, creator_defined=exp.defined_by_creator)
     return exp.model_dump(mode="json")
 
 
@@ -459,6 +476,20 @@ def minds_status() -> dict:
             "mind_name": None, "error": "no Minds configured — set env or connect your own"}
 
 
+@app.get("/api/v1/minds/recover/{rid}")
+def minds_recover(rid: str, request: Request) -> dict:
+    """P1: recover REMNANT context from the persistent Mind's conversation for
+    a remnant — proves Minds is more than a write-only mirror. Honest: it
+    returns the NARRATIVE the Mind holds; structured accounting still lives in
+    the backend store."""
+    recovered = active_minds().recover_context(rid)
+    if recovered is None:
+        return {"remnant_id": rid, "recovered": False,
+                "error": "no mirrored memory in the Mind for this remnant (or Minds not configured)",
+                "note": "the Mind holds narrative; it cannot reconstruct structured accounting"}
+    return {"remnant_id": rid, "recovered": True, **recovered}
+
+
 class AdversarialRequest(BaseModel):
     expression_a: str = Field(min_length=1, max_length=1000)
     expression_b: str = Field(min_length=1, max_length=1000)
@@ -493,14 +524,18 @@ def audit_endpoint(limit: int = 50, request: Request = None) -> dict:  # type: i
 
 @app.post("/api/v1/demo/load")
 def demo_load(request: Request) -> dict:
-    """Load the CLEARLY-LABELED synthetic demonstration corpus (2022-2026 arc)
-    into the store, so the demo can prove the full money-shot flow. Every record
-    is marked synthetic; the honesty label travels with the data."""
-    from .scripts_loader import build_demo_corpus  # local import keeps startup lean
+    """Load the CLEARLY-LABELED synthetic demonstration corpus through the
+    DISCOVERY ENGINE (no pre-encoded grouping). Returns the discovery log:
+    what REMNANT itself linked and what it created. Every record is marked
+    synthetic; the honesty label travels with the data."""
+    from .scripts_loader import build_demo_corpus, ingest_evidence_through_discovery, CORPUS_LABEL
 
-    created = build_demo_corpus(store)
-    audit("demo.corpus_loaded", request_id=getattr(request.state, "request_id", None), remnants=len(created))
-    return {"loaded": len(created), "synthetic": True, "label": "SYNTHETIC DEMONSTRATION CORPUS — not real audience data"}
+    if any("SYNTHETIC DEMONSTRATION CORPUS" in h for r in store.all() for h in r.history):
+        return {"loaded": len(store.all()), "synthetic": True,
+                "label": CORPUS_LABEL, "discovery": [], "note": "corpus already loaded (idempotent)"}
+    discovery = ingest_evidence_through_discovery(store)
+    audit("demo.corpus_loaded", request_id=getattr(request.state, "request_id", None), remnants=len(store.all()), discovered_links=len(discovery))
+    return {"loaded": len(store.all()), "synthetic": True, "label": CORPUS_LABEL, "discovery": discovery}
 
 
 @app.post("/api/v1/demo/reconnect")
@@ -572,7 +607,7 @@ def _dec(rid: str, req: CreatorDecisionRequest) -> dict:
 
 @_alias.post("/remnants/{rid}/experiments")
 def _plan(rid: str) -> dict:
-    return create_experiment(rid, request=None)  # type: ignore[arg-type]
+    return create_experiment(rid, req=None, request=None)  # type: ignore[arg-type]
 
 
 @_alias.get("/remnants/{rid}/belief")

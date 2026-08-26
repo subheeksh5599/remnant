@@ -11,6 +11,7 @@ a vibe word. There is no post-hoc threshold moving.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 
 from .models import (EvidenceStrength, Experiment, Hypothesis, Remnant,
                      ResolutionState)
@@ -19,43 +20,58 @@ from .models import (EvidenceStrength, Experiment, Hypothesis, Remnant,
 def plan_experiment(
     remnant: Remnant,
     hypothesis: Hypothesis = Hypothesis.H1,
+    metric: Optional[str] = None,
+    threshold: Optional[float] = None,
+    target_population: Optional[str] = None,
+    measurement_window: Optional[str] = None,
 ) -> Experiment:
     """Design a concrete, pre-registered, numeric validation experiment.
 
+    Autonomous by default. P2: the creator may OVERRIDE any of metric, threshold,
+    target population, or measurement window — the override is recorded on the
+    experiment (defined_by_creator=True) so nobody mistakes it for the default.
     'Concrete' means: a named deliverable, an exact measurement, a pre-registered
     numeric threshold. The creator must be able to run it and read one number.
     """
     if not remnant.expressions:
         raise ValueError("cannot plan an experiment with no expressions")
 
-    # The smallest provable slice: one 90-second explainer addressing the need,
-    # published to the relevant segment. The metric is the 48h comment-to-view
-    # ratio (comments/views) — a number, not a feeling.
-    #
-    # Threshold rationale (pre-registered, not tuned after the fact):
+    defined_by_creator = any(
+        v is not None for v in (metric, threshold, target_population, measurement_window)
+    )
+
+    # Defaults (autonomous planner). Threshold rationale (pre-registered, never
+    # tuned after the fact):
     #   >= 0.04 (4%)      -> need is currently active (H1 gains support)
     #   <  0.02 (2%)      -> evidence does not support acting now
     #   in between        -> inconclusive; run a follow-up probe
+    segment = target_population or "beginner/curious segment"
+    window = measurement_window or "48h"
     test = (
-        "Publish one 90-second explainer ('{need}') to the beginner/curious "
-        "segment on the creator's main channel, using the request's own framing."
-    ).format(need=remnant.underlying_need_hypothesis)
-    metric = "comment-to-view ratio (comments / views, measured 48h after publish)"
+        "Publish one 90-second explainer ('{need}') to the {segment} on the "
+        "creator's main channel, using the request's own framing."
+    ).format(need=remnant.underlying_need_hypothesis, segment=segment)
+    metric_final = metric or f"comment-to-view ratio (comments / views, measured {window} after publish)"
+    threshold_final = 0.04 if threshold is None else threshold
     prediction = (
-        "If the need is currently active, the explainer clears the pre-registered "
-        "threshold of 0.04 comments/view; if dormant, it stays below 0.02."
+        f"If the need is currently active, the explainer clears the pre-registered "
+        f"threshold of {threshold_final} comments/view; if dormant, it stays below "
+        f"{threshold_final / 2:.2f}."
     )
 
     return Experiment(
         remnant_id=remnant.remnant_id,
         hypothesis=hypothesis,
         test=test,
-        metric=metric,
-        threshold_value=0.04,  # PRE-REGISTERED, never adjusted after observing
+        metric=metric_final,
+        threshold_value=threshold_final,  # PRE-REGISTERED, never adjusted after observing
         threshold_operator="gte",
         prediction=prediction,
-        success_threshold="observed comment-to-view ratio >= 0.04 (4%)",
-        failure_condition="observed ratio < 0.02 (2%); do not act on the need now",
+        success_threshold=f"observed metric >= {threshold_final}",
+        failure_condition=f"observed metric < {threshold_final / 2:.2f}; do not act on the need now",
+        target_population=segment,
+        measurement_window=window,
+        defined_by_creator=defined_by_creator,
     )
 
 

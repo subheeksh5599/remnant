@@ -149,7 +149,7 @@ export function Dashboard() {
 }
 
 export function stateBadge(s: string): string {
-  return { unresolved: 'badge-warn', dormant: 'badge-neutral', fulfilled: 'badge-ok', rejected: 'badge-err',
+  return { candidate: 'badge-info', insufficient_evidence: 'badge-neutral', unresolved: 'badge-warn', dormant: 'badge-neutral', fulfilled: 'badge-ok', rejected: 'badge-err',
     partially_fulfilled: 'badge-info', revisited: 'badge-info', under_experiment: 'badge-info',
     validated: 'badge-ok', disproven: 'badge-err', uncertain: 'badge-warn' }[s] ?? 'badge-neutral'
 }

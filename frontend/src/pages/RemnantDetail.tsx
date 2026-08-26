@@ -17,6 +17,10 @@ export function RemnantDetail() {
   const [exprSrc, setExprSrc] = useState('youtube_comment')
   const [obsVal, setObsVal] = useState('')
   const [decision, setDecision] = useState('no_response')
+  const [expThreshold, setExpThreshold] = useState('')
+  const [expWindow, setExpWindow] = useState('')
+  const [expPopulation, setExpPopulation] = useState('')
+  const [expMetric, setExpMetric] = useState('')
 
   const load = (id: string) => {
     api.remnant(id).then((x) => {
@@ -47,8 +51,15 @@ export function RemnantDetail() {
   }
   const planExp = async () => {
     setBusy(true)
-    try { await api.planExperiment(full.remnant_id); await load(full.remnant_id) }
-    catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+    try {
+      const overrides: Record<string, string | number> = {}
+      if (expMetric.trim()) overrides.metric = expMetric.trim()
+      if (expThreshold.trim() && !Number.isNaN(Number(expThreshold))) overrides.threshold = Number(expThreshold)
+      if (expPopulation.trim()) overrides.target_population = expPopulation.trim()
+      if (expWindow.trim()) overrides.measurement_window = expWindow.trim()
+      await api.planExperiment(full.remnant_id, overrides)
+      await load(full.remnant_id)
+    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
   }
   const recordOut = async (e: Experiment) => {
     const v = Number(obsVal)
@@ -167,6 +178,33 @@ export function RemnantDetail() {
         })}
       </div>
 
+      {/* Discovery evidence (P0.2: how this remnant was discovered, not encoded) */}
+      {full.discovered_links && full.discovered_links.length > 0 && (
+        <>
+          <div className="card-title" style={{ marginTop: 24 }}><h3>Discovery evidence</h3></div>
+          <div className="card" style={{ marginBottom: 8 }}>
+            <p className="small muted" style={{ marginBottom: 12 }}>
+              How REMNANT itself linked each expression into this remnant — the transparent matcher
+              evidence (concept glossary + token overlap), with its limits. Nothing here is pre-encoded
+              by the corpus.
+            </p>
+            {full.discovered_links.map((l, i) => (
+              <div className="ev ev-neutral" key={i} style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 4 }}>
+                  <span className={`badge ${l.relationship === 'same_need' ? 'badge-ok' : l.relationship === 'candidate' ? 'badge-info' : 'badge-warn'}`}>{l.relationship.replace(/_/g, ' ')}</span>
+                  <span className="muted small" style={{ marginLeft: 8 }}>confidence {l.confidence}</span>
+                  {l.shared_concepts?.length > 0 && <span className="muted small" style={{ marginLeft: 8 }}>concepts: {l.shared_concepts.join(', ')}</span>}
+                </div>
+                <div className="small muted" style={{ marginBottom: 4 }}>vs "{l.against_text}"</div>
+                {l.supporting?.map((s, j) => <div className="ev ev-support" key={j} style={{ marginBottom: 2, fontSize: 12 }}>{s}</div>)}
+                {l.conflicting?.map((c, j) => <div className="ev ev-conflict" key={j} style={{ marginBottom: 2, fontSize: 12 }}>{c}</div>)}
+                {l.uncertainty?.map((u, j) => <div className="ev ev-missing" key={j} style={{ marginBottom: 2, fontSize: 12 }}>{u}</div>)}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {/* Experiments */}
       <div className="card-title" style={{ marginTop: 24 }}><h3>Experiments</h3></div>
       {full.experiments.map((e) => (
@@ -201,7 +239,40 @@ export function RemnantDetail() {
           )}
         </div>
       ))}
-      {!full.experiments.length && <button className="btn btn-ghost" style={{ marginBottom: 16 }} disabled={busy} onClick={planExp}>Plan smallest experiment</button>}
+      {!full.experiments.length && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-title"><h3>Plan an experiment</h3><span className="meta">defaults are autonomous; overrides are yours</span></div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label className="label">Metric (optional)</label>
+              <input className="input" placeholder="e.g. comment-to-view ratio at 72h"
+                value={expMetric} onChange={(ev) => setExpMetric(ev.target.value)} />
+            </div>
+            <div style={{ width: 110 }}>
+              <label className="label">Threshold (0-1)</label>
+              <input className="input" placeholder="0.04" value={expThreshold}
+                onChange={(ev) => setExpThreshold(ev.target.value)} />
+            </div>
+            <div style={{ width: 150 }}>
+              <label className="label">Window</label>
+              <input className="input" placeholder="48h" value={expWindow}
+                onChange={(ev) => setExpWindow(ev.target.value)} />
+            </div>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label className="label">Target population</label>
+              <input className="input" placeholder="beginner segment"
+                value={expPopulation} onChange={(ev) => setExpPopulation(ev.target.value)} />
+            </div>
+            <div style={{ alignSelf: 'flex-end' }}>
+              <button className="btn" disabled={busy} onClick={planExp}>Plan experiment</button>
+            </div>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            Leave all fields empty for the autonomous default (90s explainer, comment-to-view ratio,
+            threshold 0.04, 48h). Any field you fill is recorded as creator-defined on the experiment.
+          </p>
+        </div>
+      )}
 
       {/* Belief reconstruction */}
       <div className="card-title" style={{ marginTop: 24 }}><h3>Belief reconstruction</h3></div>

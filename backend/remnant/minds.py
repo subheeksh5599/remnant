@@ -185,6 +185,42 @@ class MindsClient:
             audit("minds.remember_failed", remnant_id=remnant_id, error=str(e))
             return False
 
+    def recover_context(self, remnant_id: str) -> Optional[dict]:
+        """P1: read the Mind's conversation for a remnant and reconstruct
+        meaningful context from the mirrored memory lines. This is what makes
+        Minds more than a write-only mirror: a later session can recover what
+        the agent knew about this need, even if the local store is empty.
+
+        Returns a dict with the mirrored memory lines + a reconstructed status
+        line, or None when Minds is not configured or the conversation is empty.
+        The reconstruction is honest: it reports what the MIND holds (narrative),
+        and can never recover the structured accounting (that lives in the store).
+        """
+        if not self.available():
+            return None
+        alias = f"remnant-{remnant_id[:8]}"
+        try:
+            history = self._http("GET", f"/v1/messaging/histories/{alias}", None)
+        except MindsError as e:
+            audit("minds.recover_failed", remnant_id=remnant_id, error=str(e))
+            return None
+        if not isinstance(history, list) or not history:
+            return None
+        memory_lines = []
+        for entry in history:
+            if isinstance(entry, dict):
+                text = entry.get("messageText") or ""
+                # only OUR mirror lines, not the Mind's replies
+                if text.startswith("[memory]") or text.startswith("[autonomous]") or text.startswith("[experiment]"):
+                    memory_lines.append(text)
+        return {
+            "remnant_id": remnant_id,
+            "alias": alias,
+            "memory_lines": memory_lines[-20:],
+            "count": len(memory_lines),
+            "note": "recovered from the persistent Mind's conversation; structured accounting lives in the backend store",
+        }
+
     def list_minds(self) -> list[dict]:
         """List the Minds available to the connected builder key (per-user
         connection flow). Raises MindsError on failure — never fake data.

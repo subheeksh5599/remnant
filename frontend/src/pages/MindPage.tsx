@@ -18,6 +18,8 @@ export function MindPage() {
   const [remnants, setRemnants] = useState<{ remnant_id: string; title: string }[]>([])
   const [keyField, setKeyField] = useState('')
   const [connectMsg, setConnectMsg] = useState<string | null>(null)
+  const [recoverMsg, setRecoverMsg] = useState<string | null>(null)
+  const [recoverRid, setRecoverRid] = useState('')
 
   const refresh = () => {
     Promise.all([api.mind(), api.observatoryActions(), api.remnants(), api.mindsStatus()])
@@ -62,6 +64,19 @@ export function MindPage() {
     setBusy(true); setConnectMsg(null)
     try { await api.mindsDisconnect(); setConnectMsg('Disconnected. The env-configured Mind (if any) is used again.'); refresh() }
     catch (e) { setConnectMsg((e as Error).message) } finally { setBusy(false) }
+  }
+
+  const recover = async () => {
+    if (!recoverRid.trim()) return
+    setBusy(true); setRecoverMsg(null)
+    try {
+      const r = await api.mindsRecover(recoverRid.trim())
+      if (r.recovered) {
+        setRecoverMsg(`Recovered ${r.count} memory line(s) from the Mind's conversation.\n` + (r.memory_lines ?? []).map((l) => `  • ${l.slice(0, 100)}`).join('\n'))
+      } else {
+        setRecoverMsg(`Not recoverable: ${r.error ?? 'no mirrored memory'}`)
+      }
+    } catch (e) { setRecoverMsg((e as Error).message) } finally { setBusy(false) }
   }
 
   const reconnect = async () => {
@@ -158,6 +173,17 @@ export function MindPage() {
               <div className="ev ev-support">Restart simulated. <b className="num">{persist.remnants_survived}</b> remnants survived; belief chains reconstructed.</div>
             </div>
           )}
+          <div className="meta" style={{ marginTop: 16, marginBottom: 6 }}>Recover from the Mind (not the store)</div>
+          <p className="small muted" style={{ marginBottom: 8 }}>
+            Even with the local store empty, the persistent Mind's conversation holds the
+            narrative — this reads it back.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input className="input" style={{ flex: 1, minWidth: 180 }} placeholder="remnant id"
+              value={recoverRid} onChange={(ev) => setRecoverRid(ev.target.value)} />
+            <button className="btn btn-ghost" disabled={busy || !recoverRid.trim()} onClick={recover}>Recover from Mind</button>
+          </div>
+          {recoverMsg && <div className="ev ev-neutral" style={{ marginTop: 10, whiteSpace: 'pre-line', fontSize: 12.5 }}>{recoverMsg}</div>}
         </div>
       </div>
 
