@@ -39,18 +39,54 @@ def _iso(s: str) -> datetime:
 
 
 def _best_link(store: Store, text: str):
-    """Discovery: best candidate remnant for an expression (or None)."""
+    """Discovery: best candidate remnant for an expression (or None).
+
+    Deliberately conservative: an expression only links when it shares a
+    TOPIC-SPECIFIC subject concept (zero_knowledge / mobile_app / merchandise /
+    fault_report) or >=2 meaningful tokens with an existing remnant. Generic
+    intent words alone (learn/get/start) are NOT enough — otherwise one
+    imported corpus collapses every comment into one remnant (a real failure
+    observed with a 900-comment import).
+    """
     best, target, score = None, None, 0
     for remnant in store.all():
         if not remnant.expressions or remnant.resolution_state in (ResolutionState.FULFILLED, ResolutionState.REJECTED):
             continue
-        link = discover_for_expression(text, remnant.expressions)
-        if link is None:
-            continue
-        s = {"same_need": 3, "candidate": 2, "insufficient_evidence": 1, "different_need": 0}.get(link.get("relationship"), 0)
+        s = _link_strength(text, remnant.expressions)
         if s > score:
-            score, best, target = s, link, remnant
-    return (target, best, score)
+            score, target = s, remnant
+    if target is None or score < 2:
+        return (None, None, 0)
+    # build the evidence record using the standard matcher against the best remnant
+    from .inference import discover_for_expression
+    link = discover_for_expression(text, target.expressions) if target else None
+    return (target, link, score)
+
+
+def _link_strength(text: str, expressions) -> int:
+    """0 = no link, 2 = candidate (concept or 2+ tokens), 3 = strong same_need."""
+    from .inference import _concepts, _tokens, _SUBJECT_CONCEPTS
+
+    subjects = set()
+    strong = 0
+    for e in expressions[:24]:
+        shared = _concepts(text) & _concepts(e.text)
+        if shared & _SUBJECT_CONCEPTS:
+            subjects |= shared & _SUBJECT_CONCEPTS
+            strong = max(strong, 2)
+        meaningful = len((_tokens(text) & _tokens(e.text)) - _STOP)
+        if meaningful >= 2:
+            strong = max(strong, 3)
+        if strong >= 3:
+            break
+    return strong if subjects or strong else 0
+
+
+_SUBJECT_CONCEPTS = {"zero_knowledge", "merchandise", "mobile_app", "fault_report"}
+_STOP = {"how", "do", "i", "you", "we", "a", "an", "the", "can", "make", "me",
+         "to", "for", "of", "is", "are", "it", "this", "that", "with", "on",
+         "in", "at", "my", "your", "our", "please", "help", "start", "get",
+         "learn", "building", "new", "vid", "video", "app", "please"}
 
 
 def _attach(store: Store, remnant: Remnant, expr: AudienceExpression, link: dict, provenance_label: str) -> None:
